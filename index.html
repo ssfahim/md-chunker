@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MD Chunker</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem;
+         background: #16181c; color: #e6e6e6; }
+  textarea { width: 100%; height: 220px; font-family: ui-monospace, monospace; font-size: 13px; }
+  label { margin-right: 1rem; }
+  details { border: 1px solid #333940; border-radius: 6px; margin: .5rem 0; padding: .5rem .75rem;
+            background: #1d2026; }
+  summary { cursor: pointer; font-weight: 600; }
+  pre { background: #101216; padding: .5rem; overflow-x: auto; max-height: 320px; font-size: 12px;
+        border-radius: 4px; }
+  button { font: inherit; padding: .3rem .7rem; cursor: pointer; }
+  #go { padding: .5rem 1.2rem; }
+  .ok { color: #4ade80; }
+</style>
+
+<h1>MD Chunker</h1>
+<p>Paste text, get 150-line chunks with copy buttons.</p>
+
+<textarea id="src" placeholder="Paste your .md content here..."></textarea>
+<p>
+  <label>Lines per chunk: <input id="n" type="number" value="150" min="1" style="width:5em"></label>
+  <label><input id="fence" type="checkbox"> Don't split inside ``` code blocks</label>
+  <button id="go">Split</button>
+</p>
+<div id="out"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function chunk(text, n, respectFence) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let start = 0;
+  while (start < lines.length) {
+    let end = Math.min(start + n, lines.length);
+    if (respectFence && end < lines.length) {
+      // if the cut lands inside a fence, extend to the closing fence
+      let open = false;
+      for (let i = start; i < end; i++) if (/^\s*```/.test(lines[i])) open = !open;
+      while (open && end < lines.length) {
+        if (/^\s*```/.test(lines[end])) open = false;
+        end++;
+      }
+    }
+    out.push(lines.slice(start, end).join('\n'));
+    start = end;
+  }
+  return out;
+}
+
+async function copy(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+  const old = btn.textContent;
+  btn.textContent = 'Copied ✓';
+  btn.className = 'ok';
+  setTimeout(() => { btn.textContent = old; btn.className = ''; }, 1500);
+}
+
+$('go').onclick = () => {
+  const parts = chunk($('src').value, Math.max(1, +$('n').value || 150), $('fence').checked);
+  const out = $('out');
+  out.textContent = '';
+  parts.forEach((part, i) => {
+    const d = document.createElement('details');
+    const s = document.createElement('summary');
+    s.textContent = `Part ${i + 1} of ${parts.length} — ${part.split('\n').length} lines`;
+    const b = document.createElement('button');
+    b.textContent = 'Copy';
+    b.onclick = e => { e.preventDefault(); e.stopPropagation(); copy(part, b); };
+    s.append(' ', b);
+    const pre = document.createElement('pre');
+    pre.textContent = part;
+    d.append(s, pre);
+    out.append(d);
+  });
+};
+</script>
