@@ -82,7 +82,14 @@ Press the cursor shortcut. A ring appears in the middle of the page.
 | Two arrows at once | diagonal, at the same speed as a straight line |
 | `Shift` + arrow | 2.2× faster, for crossing the page |
 | `Enter` or `Space` | click whatever is under the cursor |
-| `Esc` | put the cursor away |
+| `Esc` | leave a focused text field, or put the cursor away |
+
+`Enter` acts on whatever the cursor points at, even when a text field elsewhere has
+focus — pages autofocus search boxes constantly, and that used to kill `Enter` across the
+whole page. The page keeps the key only when it is genuinely the page's: the cursor is
+sitting on a text field (so forms still submit), or `Space` is needed to type a space.
+Arrow keys always belong to a focused text field; `Esc` steps out of it without putting
+the cursor away.
 
 Motion is a velocity ramp on an animation frame, not a fixed hop per keypress: a tap
 nudges it a few pixels, a held key winds up to full speed. Measured on a 484 px viewport,
@@ -126,8 +133,12 @@ Open `test.html` in a browser. It prints **PASS** or lists what broke, and cover
 - the speed ramp — starts at `V0`, accelerates, caps at `VMAX`, obeys `Shift`
 - movement maths — diagonals normalised, edge clamping, overshoot handed to scroll,
   and a long stall between frames capped instead of teleporting the cursor
-- the key loop — `Enter` clicking the element underneath, held keys starting and
-  stopping the loop, the text-field guard, `Esc` cleaning up
+- the key loop — `Enter` clicking the element underneath (including while a text field
+  elsewhere holds focus, the case that made it look dead), a text field under the cursor
+  keeping `Enter` so forms submit, `Space` still typing while typing, held keys starting
+  and stopping the loop, `Esc` stepping out of a field and then cleaning up
+- the ring being drawn exactly where it clicks, even inside a positioned, padded
+  ancestor — otherwise you aim at a link and hit whatever is 30 px away
 - the popup labels, including the regression where they waited on a message and so
   said nothing at all
 - **double injection** — both content scripts are deliberately loaded twice in the test

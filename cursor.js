@@ -47,14 +47,30 @@ const dirOf = keys => {
 let pos = null, dot = null, hovered = null;
 let held = new Set(), raf = 0, lastT = 0, downT = 0, fast = false;
 
-const isTyping = () => {
-  const a = document.activeElement;
-  return !!a && (a.isContentEditable || /^(input|textarea|select)$/i.test(a.tagName));
-};
+const isTextField = el =>
+  !!el && (el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName));
+
+const isTyping = () => isTextField(document.activeElement);
 
 // Positioned in page coords, not fixed: dark mode's filter on <html> makes
 // position:fixed scroll with the page, so absolute + scroll offset is the honest fix.
-const draw = () => { dot.style.transform = `translate(${pos.x + scrollX}px, ${pos.y + scrollY}px)`; };
+// off corrects for an offset parent: plenty of sites give body position:relative or a
+// margin, and then left:0/top:0 is not the page origin, so the ring drifts away from
+// the point we actually click. Measured once rather than assumed.
+let off = { x: 0, y: 0 };
+const draw = () => {
+  dot.style.transform =
+    `translate(${pos.x + scrollX + off.x}px, ${pos.y + scrollY + off.y}px)`;
+};
+
+function calibrate() {
+  off = { x: 0, y: 0 };
+  draw();
+  const r = dot.getBoundingClientRect();
+  if (!r.width) return; // not laid out yet; the next calibrate will catch it
+  off = { x: pos.x - (r.left + r.width / 2), y: pos.y - (r.top + r.height / 2) };
+  draw();
+}
 
 // Menus and tooltips open on hover, so a cursor that only clicks is half a cursor.
 function sendHover() {
@@ -92,8 +108,20 @@ const resetRun = t => { downT = t; lastT = t; }; // start of a fresh acceleratin
 function activate() {
   const t = document.elementFromPoint(pos.x, pos.y);
   if (!t) return;
-  t.focus?.();
-  if (!isTyping()) t.click(); // a focused text field wants the caret, not a click
+
+  // Decide from the TARGET, never from what happens to be focused. The old test was
+  // "did focus land in a text field", which was true whenever a page had a focused
+  // search box — and then Enter over a plain div silently did nothing at all.
+  if (isTextField(t)) { t.focus(); return; } // a text field wants the caret, not a click
+
+  t.focus?.(); // a no-op on elements that cannot take focus, which is fine
+  // Plenty of UI listens for mousedown/mouseup rather than click, so send the whole
+  // sequence, then click() for the browser's own default action (links, submits).
+  const o = { bubbles: true, cancelable: true, view: window, button: 0, detail: 1,
+              clientX: pos.x, clientY: pos.y };
+  t.dispatchEvent(new MouseEvent('mousedown', o));
+  t.dispatchEvent(new MouseEvent('mouseup', o));
+  t.click();
 }
 
 const stopMoving = () => {
@@ -103,8 +131,26 @@ const stopMoving = () => {
 };
 
 function onKey(e) {
-  if (e.key === 'Escape') return cursorOff();
-  if (isTyping()) return; // never steal arrows from a text field
+  if (e.key === 'Escape') {
+    // A focused text field owns the arrows and Enter, which would otherwise trap you
+    // there with no mouse. First Escape leaves the field, second puts the cursor away.
+    if (isTyping()) { document.activeElement.blur(); e.preventDefault(); return; }
+    return cursorOff();
+  }
+  // Enter acts on whatever the cursor points at, even when a text field elsewhere holds
+  // focus. Pages autofocus search boxes constantly, and the old rule made Enter dead on
+  // the whole page whenever that happened. The page keeps the key only when it is
+  // genuinely the page's: the cursor is over a text field, or Space needs to type.
+  if (e.key === 'Enter' || e.key === ' ') {
+    const target = document.elementFromPoint(pos.x, pos.y);
+    if (isTextField(target) || (isTyping() && e.key === ' ')) return;
+    activate();
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
+
+  if (isTyping()) return; // arrows belong to a focused text field
   if (KEYS[e.key]) {
     fast = e.shiftKey;
     if (!held.has(e.key)) {
@@ -114,8 +160,6 @@ function onKey(e) {
         raf = requestAnimationFrame(frame);
       }
     }
-  } else if (e.key === 'Enter' || e.key === ' ') {
-    activate();
   } else {
     return;
   }
@@ -140,10 +184,11 @@ function cursorOn() {
     box-shadow:0 0 0 2px #000, inset 0 0 0 2px #000;`;
   document.body.append(dot);
   pos = { x: Math.round(innerWidth / 2), y: Math.round(innerHeight / 2) };
-  draw();
+  calibrate(); // draws, and corrects for an offset parent
   addEventListener('keydown', onKey, true);
   addEventListener('keyup', onKeyUp, true);
   addEventListener('scroll', draw, true);
+  addEventListener('resize', calibrate);
   addEventListener('blur', stopMoving); // a missed keyup would otherwise glide forever
 }
 
@@ -153,6 +198,7 @@ function cursorOff() {
   removeEventListener('keydown', onKey, true);
   removeEventListener('keyup', onKeyUp, true);
   removeEventListener('scroll', draw, true);
+  removeEventListener('resize', calibrate);
   removeEventListener('blur', stopMoving);
   dot.remove();
   dot = null;
@@ -173,8 +219,8 @@ if (globalThis.chrome?.runtime?.onMessage) {
 const place = (x, y) => { pos = { x, y }; draw(); }; // viewport coords
 
 globalThis.darkAnyCursor = {
-  advance, speedAt, dirOf, cursorOn, cursorOff, place,
-  step, resetRun, held, isMoving: () => !!raf,
+  advance, speedAt, dirOf, cursorOn, cursorOff, place, calibrate, activate,
+  step, resetRun, held, isMoving: () => !!raf, posOf: () => ({ ...pos }),
   V0, VMAX, ACCEL, FAST, CURSOR_ID,
 };
 })();

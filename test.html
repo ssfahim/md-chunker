@@ -160,7 +160,11 @@ ok(document.getElementById('dark').textContent.trim().startsWith('Activate dark 
 delete globalThis.chrome;
 
 // --- the real key loop, driven through actual events ---
-const xOf = el => parseFloat(el.style.transform.match(/translate\(([-\d.]+)px/)[1]);
+const xOf = () => darkAnyCursor.posOf().x;  // logical position, free of any draw offset
+const isTypingNow = () => {
+  const a = document.activeElement;
+  return !!a && (a.isContentEditable || /^(input|textarea|select)$/i.test(a.tagName));
+};
 
 // Timestamps are injected rather than waiting on requestAnimationFrame: the display
 // may throttle frames to nothing in a background tab, and that must not read as a bug.
@@ -182,11 +186,97 @@ const xOf = el => parseFloat(el.style.transform.match(/translate\(([-\d.]+)px/)[
 
   kc.cursorOn();
   const dot = document.getElementById(kc.CURSOR_ID);
-  kc.place(30, 30);
-  ok(document.elementFromPoint(30, 30) === btn, 'test setup: the target must sit under the cursor');
+  const centre = el => {
+    const r = el.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  };
+  const aimAt = el => { const c = centre(el); kc.place(c.x, c.y); return c; };
+  let c = aimAt(btn);
+  ok(document.elementFromPoint(c.x, c.y) === btn, 'test setup: the target must sit under the cursor');
 
   down('Enter');
   ok(clicks === 1, 'Enter must click whatever sits under the cursor');
+
+  // THE regression: a page with a focused search box made Enter do nothing anywhere,
+  // because the decision looked at what was focused instead of what was under the ring.
+  // The target must be NON-focusable — a plain div, like most clickable site UI.
+  // A <button> would take focus and mask the bug by clearing the typing state.
+  const plain = document.createElement('div');
+  plain.textContent = 'plain clickable';
+  plain.style.cssText =
+    `position:absolute;left:${scrollX}px;top:${scrollY + 220}px;width:160px;height:40px`;
+  let plainClicks = 0;
+  plain.addEventListener('click', () => plainClicks++);
+  document.body.append(plain);
+
+  inp.focus();
+  ok(isTypingNow(), 'setup: a text field must really hold focus here');
+  c = aimAt(plain);
+  ok(document.elementFromPoint(c.x, c.y) === plain, 'setup: the plain div must sit under the cursor');
+  // through a REAL key event, so this covers the keydown guard that swallowed Enter
+  // outright whenever a page had autofocused a search box
+  down('Enter');
+  ok(plainClicks === 1,
+     'Enter must click a plain element even while a text field elsewhere holds focus');
+  inp.blur();
+
+  // ...but a text field UNDER the cursor keeps Enter, so forms still submit
+  const formField = document.createElement('input');
+  formField.style.cssText =
+    `position:absolute;left:${scrollX}px;top:${scrollY + 280}px;width:160px;height:30px`;
+  document.body.append(formField);
+  formField.focus();
+  c = aimAt(formField);
+  if (document.elementFromPoint(c.x, c.y) === formField) {
+    let prevented = false;
+    const spy = e => { prevented = e.defaultPrevented; };
+    addEventListener('keydown', spy);
+    down('Enter');
+    removeEventListener('keydown', spy);
+    ok(!prevented, 'Enter over a text field must be left to the page, so forms submit');
+  }
+  formField.blur();
+  formField.remove();
+
+  // Space must still type a space while typing, rather than clicking something
+  inp.focus();
+  const beforeSpace = plainClicks;
+  aimAt(plain);
+  down(' ');
+  ok(plainClicks === beforeSpace, 'Space while typing must type, not click');
+  inp.blur();
+  plain.remove();
+
+  // widgets that only listen for mousedown/mouseup must fire too
+  const widget = document.createElement('div');
+  widget.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 80}px;width:120px;height:40px`;
+  const seen = [];
+  for (const type of ['mousedown', 'mouseup', 'click']) {
+    widget.addEventListener(type, () => seen.push(type));
+  }
+  document.body.append(widget);
+  c = aimAt(widget);
+  ok(document.elementFromPoint(c.x, c.y) === widget, 'setup: the widget must sit under the cursor');
+  kc.activate();
+  ok(seen.includes('mousedown') && seen.includes('mouseup'),
+     `a full press must be sent, not click alone (got ${seen.join(',') || 'nothing'})`);
+  ok(seen.includes('click'), 'the click itself must still arrive');
+  widget.remove();
+
+  // a text field under the cursor takes the caret, and must NOT be clicked away
+  const field = document.createElement('input');
+  field.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 140}px;width:120px`;
+  let fieldClicks = 0;
+  field.addEventListener('click', () => fieldClicks++);
+  document.body.append(field);
+  c = aimAt(field);
+  if (document.elementFromPoint(c.x, c.y) === field) {
+    kc.activate();
+    ok(document.activeElement === field, 'a text field under the cursor must take focus');
+    ok(fieldClicks === 0, 'a text field must get the caret, not a synthetic click');
+    field.blur();
+  }
+  field.remove();
 
   // a held key must register, and let go must clear it
   down('ArrowRight');
@@ -201,24 +291,24 @@ const xOf = el => parseFloat(el.style.transform.match(/translate\(([-\d.]+)px/)[
   kc.held.add('ArrowRight');
   kc.resetRun(1000);
   kc.step(1016);
-  const f1 = xOf(dot) - 100;
+  const f1 = xOf() - 100;
   ok(f1 > 0 && f1 < 40, `one 16 ms frame must glide a few px, not jump (got ${f1.toFixed(1)})`);
-  const before = xOf(dot);
+  const before = xOf();
   kc.step(1032);
-  ok(xOf(dot) > before, 'the next frame must carry on without another keypress');
+  ok(xOf() > before, 'the next frame must carry on without another keypress');
 
   // accelerating: a frame late in the hold covers more ground than one at the start
   kc.place(0, 300);
   kc.resetRun(2000);
   kc.step(2016);
-  const early = xOf(dot);
+  const early = xOf();
   kc.step(2032);
-  const earlyDelta = xOf(dot) - early;
+  const earlyDelta = xOf() - early;
   kc.place(0, 300);
   kc.step(2600);
-  const late = xOf(dot);
+  const late = xOf();
   kc.step(2616);
-  const lateDelta = xOf(dot) - late;
+  const lateDelta = xOf() - late;
   ok(lateDelta > earlyDelta,
      `holding must accelerate (early ${earlyDelta.toFixed(1)}px vs late ${lateDelta.toFixed(1)}px per frame)`);
 
@@ -226,20 +316,46 @@ const xOf = el => parseFloat(el.style.transform.match(/translate\(([-\d.]+)px/)[
   kc.place(0, 300);
   kc.resetRun(3000);
   kc.step(9000); // six seconds later
-  ok(xOf(dot) < 200, 'a huge gap between frames must be capped, not turned into a leap');
+  ok(xOf() < 200, 'a huge gap between frames must be capped, not turned into a leap');
   kc.held.clear();
 
   // typing guard
-  kc.place(30, 30);
+  aimAt(btn);
   inp.focus();
-  const parked = dot.style.transform;
+  const parked = xOf();
   down('ArrowRight');
   ok(!kc.held.has('ArrowRight'), 'arrows inside a text field must not drive the cursor');
-  ok(dot.style.transform === parked, 'the cursor must stay parked while typing');
-  inp.blur();
+  ok(xOf() === parked, 'the cursor must stay parked while typing');
+
+  // ...but that must not trap you in the field with no mouse: Escape gets you out
+  down('Escape');
+  ok(!isTypingNow(), 'Escape must leave the text field');
+  ok(!!document.getElementById(kc.CURSOR_ID), 'that first Escape must keep the cursor alive');
+  down('ArrowRight');
+  ok(kc.held.has('ArrowRight'), 'after leaving the field the arrows must work again');
+  up('ArrowRight');
 
   down('Escape');
-  ok(!document.getElementById(kc.CURSOR_ID), 'Escape must remove the cursor');
+  ok(!document.getElementById(kc.CURSOR_ID), 'a second Escape must remove the cursor');
+
+  // The ring must sit exactly where clicks land, even when body is a positioned,
+  // offset ancestor — otherwise you aim at a link and hit whatever is 30 px away.
+  const savedPos = document.body.style.position;
+  const savedPad = document.body.style.padding;
+  document.body.style.position = 'relative';
+  document.body.style.padding = '37px 0 0 23px';
+  kc.cursorOn();
+  const ring = document.getElementById(kc.CURSOR_ID);
+  kc.place(120, 90);
+  kc.calibrate();
+  const rect = ring.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  const p = kc.posOf();
+  ok(Math.abs(cx - p.x) <= 1 && Math.abs(cy - p.y) <= 1,
+     `the ring must be drawn at the point it clicks (off by ${(cx - p.x).toFixed(1)}, ${(cy - p.y).toFixed(1)})`);
+  kc.cursorOff();
+  document.body.style.position = savedPos;
+  document.body.style.padding = savedPad;
 
   btn.remove();
   inp.remove();
