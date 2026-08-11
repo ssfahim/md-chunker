@@ -14,10 +14,17 @@ files on both. There is nothing OS-specific to build.
 
 | Action | macOS | Windows |
 |--------|-------|---------|
-| Toggle the keyboard cursor | `Cmd` `Opt` `C` | `Ctrl` `Alt` `C` |
+| Toggle the keyboard cursor | `Opt` `Shift` `C` | `Alt` `Shift` `C` |
 | Toggle dark mode on this site | `Opt` `Shift` `D` (or the toolbar button) | `Alt` `Shift` `D` (or the toolbar button) |
 
 Same shortcut turns the cursor off again. Rebind either at `chrome://extensions/shortcuts`.
+
+**Why not `Cmd`+`Opt`+`C`:** Chrome refuses to load an extension that asks for it.
+`Ctrl+Alt+*` is banned outright (it collides with AltGr on Windows layouts) and
+`Command+Alt+*` is rejected too — both verified against the browser, which fails with
+`Invalid value for 'commands[…]'` rather than just ignoring the key. Of the combos that
+do load, `Opt/Alt+Shift+C` is the same physical keys on both platforms and avoids
+`Cmd+Shift+C`, which is already the DevTools element picker.
 
 ## How it works
 

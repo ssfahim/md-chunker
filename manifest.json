@@ -18,7 +18,7 @@
   "commands": {
     "_execute_action": { "suggested_key": { "default": "Alt+Shift+D" } },
     "toggle-cursor": {
-      "suggested_key": { "default": "Ctrl+Alt+C", "mac": "Command+Alt+C" },
+      "suggested_key": { "default": "Alt+Shift+C" },
       "description": "Toggle the keyboard cursor"
     }
   }
