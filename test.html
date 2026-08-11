@@ -1,0 +1,33 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>dark-any self-check</title>
+<h1>dark-any self-check</h1>
+<p>Open this file in a browser. It fails loudly if the light/dark detection breaks.</p>
+<pre id="out">running…</pre>
+<div id="probe" style="background:#ffffff">probe</div>
+
+<script src="dark.js"></script>
+<script>
+const fails = [];
+const ok = (cond, what) => { if (!cond) fails.push(what); };
+const isDark = c => darkAny.luminanceOf(c) < darkAny.DARK_BELOW;
+
+ok(!isDark('rgb(255, 255, 255)'), 'white must read as light');
+ok(!isDark('rgb(246, 246, 246)'), 'near-white must read as light');
+ok(isDark('rgb(22, 24, 28)'), 'near-black must read as dark');
+ok(isDark('rgb(0, 0, 0)'), 'black must read as dark');
+ok(!isDark('rgba(0, 0, 0, 0)'), 'transparent = browser default white, so light');
+ok(!isDark('transparent'), 'the transparent keyword must fall back to light');
+ok(isDark('rgb(0, 0, 139)'), 'dark blue must read as dark');
+ok(!isDark('rgb(255, 255, 0)'), 'yellow is bright, must read as light');
+
+// the CSS must un-flip media, or every image on every page comes out negative
+ok(/\bimg\b/.test(darkAny.CSS) && /\bvideo\b/.test(darkAny.CSS), 'CSS must re-invert img and video');
+
+// pageIsDark reads the live document, not a string
+ok(typeof darkAny.pageIsDark() === 'boolean', 'pageIsDark must return a boolean');
+ok(darkAny.pageIsDark() === false, 'this page is white, so pageIsDark must be false');
+
+out.textContent = fails.length ? 'FAIL\n' + fails.join('\n') : 'PASS — all checks green';
+out.style.color = fails.length ? 'crimson' : 'green';
+</script>
