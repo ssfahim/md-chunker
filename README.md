@@ -123,7 +123,9 @@ reload. A mouse-replacement mode you forgot was armed is worse than one you re-a
   copy of the old scripts. The new copy takes over from it on load and sweeps any ring
   it left behind, but reloading the page is still the cleanest way to start fresh.
 - The cursor **clicks, it does not drag**. Sliders, canvases and drag-and-drop still
-  need the mouse; that would mean synthesising a full mousedown/move/up stream.
+  need the mouse; that would mean holding the button down across a move.
+- Clicks are synthetic, so `event.isTrusted` is false. The rare handler that insists on
+  a trusted event will ignore the cursor, and nothing short of a real mouse fixes that.
 
 ## Check
 
@@ -139,6 +141,11 @@ Open `test.html` in a browser. It prints **PASS** or lists what broke, and cover
   and stopping the loop, `Esc` stepping out of a field and then cleaning up
 - the ring being drawn exactly where it clicks, even inside a positioned, padded
   ancestor — otherwise you aim at a link and hit whatever is 30 px away
+- **icon buttons**: the hit lands on the `<svg>`/`<path>` inside, which has no `click()`
+  method at all, so the click is dispatched as real events instead. Also checked: links
+  still follow their `href`, buttons inside shadow roots are reachable, the sequence is
+  `pointerdown, mousedown, pointerup, mouseup, click` in that order, and exactly one
+  click fires — never a double
 - the popup labels, including the regression where they waited on a message and so
   said nothing at all
 - **double injection** — both content scripts are deliberately loaded twice in the test

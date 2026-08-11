@@ -74,7 +74,7 @@ function calibrate() {
 
 // Menus and tooltips open on hover, so a cursor that only clicks is half a cursor.
 function sendHover() {
-  const t = document.elementFromPoint(pos.x, pos.y);
+  const t = deepElementAt(pos.x, pos.y);
   if (!t) return;
   const o = { bubbles: true, view: window, clientX: pos.x, clientY: pos.y };
   if (t !== hovered) {
@@ -105,8 +105,22 @@ function frame(t) {
 
 const resetRun = t => { downT = t; lastT = t; }; // start of a fresh accelerating run
 
+const FOCUSABLE = 'a, button, input, select, textarea, summary, label, [tabindex], [role="button"]';
+
+// elementFromPoint stops at a shadow host, so drill through to the real element under
+// the point — component libraries put their actual buttons inside shadow roots.
+function deepElementAt(x, y) {
+  let el = document.elementFromPoint(x, y);
+  while (el?.shadowRoot) {
+    const inner = el.shadowRoot.elementFromPoint?.(x, y);
+    if (!inner || inner === el) break;
+    el = inner;
+  }
+  return el;
+}
+
 function activate() {
-  const t = document.elementFromPoint(pos.x, pos.y);
+  const t = deepElementAt(pos.x, pos.y);
   if (!t) return;
 
   // Decide from the TARGET, never from what happens to be focused. The old test was
@@ -114,14 +128,23 @@ function activate() {
   // search box — and then Enter over a plain div silently did nothing at all.
   if (isTextField(t)) { t.focus(); return; } // a text field wants the caret, not a click
 
-  t.focus?.(); // a no-op on elements that cannot take focus, which is fine
-  // Plenty of UI listens for mousedown/mouseup rather than click, so send the whole
-  // sequence, then click() for the browser's own default action (links, submits).
-  const o = { bubbles: true, cancelable: true, view: window, button: 0, detail: 1,
-              clientX: pos.x, clientY: pos.y };
-  t.dispatchEvent(new MouseEvent('mousedown', o));
-  t.dispatchEvent(new MouseEvent('mouseup', o));
-  t.click();
+  // Focus the thing that actually takes focus — the button, not the icon inside it.
+  (t.closest?.(FOCUSABLE) || t).focus?.();
+
+  // Dispatch the sequence a real mouse produces. NOT element.click(): that method only
+  // exists on HTMLElement, so on an SVG icon — which is what most X buttons are — it
+  // threw "click is not a function" and the whole keypress died silently.
+  const base = { bubbles: true, cancelable: true, composed: true, view: window,
+                 button: 0, detail: 1, clientX: pos.x, clientY: pos.y };
+  const fire = (Kind, type, extra) => t.dispatchEvent(new Kind(type, { ...base, ...extra }));
+  const pointer = { pointerType: 'mouse', isPrimary: true, pointerId: 1 };
+  const P = globalThis.PointerEvent;
+
+  if (P) fire(P, 'pointerdown', { ...pointer, buttons: 1 });
+  fire(MouseEvent, 'mousedown', { buttons: 1 });
+  if (P) fire(P, 'pointerup', pointer);
+  fire(MouseEvent, 'mouseup');
+  fire(MouseEvent, 'click'); // carries the default action too: links follow, submits submit
 }
 
 const stopMoving = () => {
@@ -142,7 +165,7 @@ function onKey(e) {
   // the whole page whenever that happened. The page keeps the key only when it is
   // genuinely the page's: the cursor is over a text field, or Space needs to type.
   if (e.key === 'Enter' || e.key === ' ') {
-    const target = document.elementFromPoint(pos.x, pos.y);
+    const target = deepElementAt(pos.x, pos.y);
     if (isTextField(target) || (isTyping() && e.key === ' ')) return;
     activate();
     e.preventDefault();
@@ -219,7 +242,7 @@ if (globalThis.chrome?.runtime?.onMessage) {
 const place = (x, y) => { pos = { x, y }; draw(); }; // viewport coords
 
 globalThis.darkAnyCursor = {
-  advance, speedAt, dirOf, cursorOn, cursorOff, place, calibrate, activate,
+  advance, speedAt, dirOf, cursorOn, cursorOff, place, calibrate, activate, deepElementAt,
   step, resetRun, held, isMoving: () => !!raf, posOf: () => ({ ...pos }),
   V0, VMAX, ACCEL, FAST, CURSOR_ID,
 };

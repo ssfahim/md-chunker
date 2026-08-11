@@ -247,11 +247,64 @@ const isTypingNow = () => {
   inp.blur();
   plain.remove();
 
+  // An icon button: the hit lands on the SVG path inside it. element.click() does not
+  // exist on SVG, so this used to throw and the keypress died — the reported "X won't
+  // click". The click must still reach the button's own handler.
+  const iconBtn = document.createElement('button');
+  iconBtn.style.cssText =
+    `position:absolute;left:${scrollX}px;top:${scrollY + 320}px;width:44px;height:44px;padding:0`;
+  iconBtn.innerHTML =
+    '<svg width="44" height="44" viewBox="0 0 44 44"><path d="M10 10 L34 34 M34 10 L10 34" stroke="black" stroke-width="6"/></svg>';
+  let iconClicks = 0;
+  iconBtn.addEventListener('click', () => iconClicks++);
+  document.body.append(iconBtn);
+  c = aimAt(iconBtn);
+  const hitInsideIcon = document.elementFromPoint(c.x, c.y);
+  ok(hitInsideIcon && hitInsideIcon.tagName.toLowerCase() !== 'button',
+     'setup: the hit must land on the SVG inside, not the button itself');
+  ok(typeof hitInsideIcon.click === 'undefined',
+     'setup: SVG content really has no click() method — that was the bug');
+  down('Enter');
+  ok(iconClicks === 1, `an SVG icon button must click exactly once (got ${iconClicks})`);
+  iconBtn.remove();
+
+  // a link must still follow its href, since we no longer call the native click()
+  const link = document.createElement('a');
+  link.href = '#cursor-reached-it';
+  link.textContent = 'link';
+  link.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 380}px;width:80px;height:30px`;
+  document.body.append(link);
+  location.hash = '';
+  c = aimAt(link);
+  if (document.elementFromPoint(c.x, c.y) === link) {
+    down('Enter');
+    ok(location.hash === '#cursor-reached-it', 'a link must still follow its href');
+  }
+  location.hash = '';
+  link.remove();
+
+  // a button inside a shadow root: elementFromPoint stops at the host, so we must drill
+  const host = document.createElement('div');
+  host.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 440}px;width:120px;height:40px`;
+  document.body.append(host);
+  const shadow = host.attachShadow({ mode: 'open' });
+  const inner = document.createElement('button');
+  inner.textContent = 'inside shadow';
+  inner.style.cssText = 'width:120px;height:40px';
+  let innerClicks = 0;
+  inner.addEventListener('click', () => innerClicks++);
+  shadow.append(inner);
+  c = aimAt(host);
+  ok(kc.deepElementAt(c.x, c.y) === inner, 'the hit test must drill into a shadow root');
+  down('Enter');
+  ok(innerClicks === 1, 'a button inside a shadow root must be clickable');
+  host.remove();
+
   // widgets that only listen for mousedown/mouseup must fire too
   const widget = document.createElement('div');
   widget.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 80}px;width:120px;height:40px`;
   const seen = [];
-  for (const type of ['mousedown', 'mouseup', 'click']) {
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
     widget.addEventListener(type, () => seen.push(type));
   }
   document.body.append(widget);
@@ -260,7 +313,12 @@ const isTypingNow = () => {
   kc.activate();
   ok(seen.includes('mousedown') && seen.includes('mouseup'),
      `a full press must be sent, not click alone (got ${seen.join(',') || 'nothing'})`);
+  ok(seen.includes('pointerdown') && seen.includes('pointerup'),
+     'pointer events must fire too, or component libraries never see the press');
   ok(seen.includes('click'), 'the click itself must still arrive');
+  ok(seen.filter(t => t === 'click').length === 1, 'exactly one click, never a double');
+  ok(seen.join(',') === 'pointerdown,mousedown,pointerup,mouseup,click',
+     `the order must match a real mouse (got ${seen.join(',')})`);
   widget.remove();
 
   // a text field under the cursor takes the caret, and must NOT be clicked away
