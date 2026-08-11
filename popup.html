@@ -15,8 +15,9 @@
   p { margin: 0; }
 </style>
 
-<button id="cursor" aria-pressed="false">…<span class="keys"></span></button>
-<button id="dark" aria-pressed="false">…<span class="keys"></span></button>
+<!-- real labels in the markup, so they are readable even if scripting hiccups -->
+<button id="cursor" aria-pressed="false">Activate cursor <span class="keys"></span></button>
+<button id="dark" aria-pressed="false">Activate dark theme <span class="keys"></span></button>
 <p id="err" hidden></p>
 
 <script src="popup.js"></script>

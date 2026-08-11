@@ -12,8 +12,10 @@ async function send(tabId, msg) {
   }
 }
 
+// lastFocusedWindow, NOT currentWindow: a service worker has no window of its own,
+// so currentWindow can match nothing and every message dies with "no tab".
 const activeId = async () =>
-  (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+  (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id;
 
 const MSG = { 'toggle-dark': 'toggle', 'toggle-cursor': 'toggle-cursor' };
 
@@ -23,11 +25,12 @@ chrome.commands.onCommand.addListener(async (cmd, tab) => {
   if (msg && id) await send(id, msg);
 });
 
-// the popup cannot inject, so it asks the worker to do the talking
+// the popup cannot inject, so it asks the worker to do the talking. The popup knows
+// its own tab and says so; the fallback is only for the keyboard path.
 chrome.runtime.onMessage.addListener((req, _sender, respond) => {
   if (req?.relay === undefined) return;
-  activeId()
-    .then(id => (id ? send(id, req.relay) : Promise.reject(new Error('no tab'))))
+  Promise.resolve(req.tabId ?? activeId())
+    .then(id => (id ? send(id, req.relay) : Promise.reject(new Error('no active tab'))))
     .then(state => respond({ state }))
     .catch(e => respond({ error: String(e.message || e) }));
   return true; // response comes back async

@@ -78,10 +78,17 @@ Press the cursor shortcut. A ring appears in the middle of the page.
 
 | Key | Does |
 |-----|------|
-| Arrow keys | move the cursor (28 px a press; hold the key to repeat) |
-| `Shift` + arrow | move 8× as far, for crossing the page |
+| Arrow keys | hold to glide; it starts slow for precision and accelerates |
+| Two arrows at once | diagonal, at the same speed as a straight line |
+| `Shift` + arrow | 2.2× faster, for crossing the page |
 | `Enter` or `Space` | click whatever is under the cursor |
 | `Esc` | put the cursor away |
+
+Motion is a velocity ramp on an animation frame, not a fixed hop per keypress: a tap
+nudges it a few pixels, a held key winds up to full speed. Measured on a 484 px viewport,
+it opens at 5.8 px per frame and reaches ~26 px, crossing the whole width in about half a
+second. The four knobs at the top of `cursor.js` (`V0`, `VMAX`, `ACCEL`, `FAST`) are in
+real px/s — if it feels too twitchy or too sluggish on your screen, change them there.
 
 Pushing past a viewport edge pins the cursor there and scrolls the page instead, so
 nothing is out of reach. Moving also fires hover events, so dropdown menus and tooltips
@@ -110,11 +117,20 @@ reload. A mouse-replacement mode you forgot was armed is worse than one you re-a
 
 ## Check
 
-Open `test.html` in a browser. It prints **PASS** or lists what broke. It covers the
-light/dark detection on known colours, the cursor's step and edge-clamp maths, and the
-real key loop — arrow moves, `Enter` clicking the element underneath, the text-field
-guard, `Esc` cleaning up. Run it after touching `luminanceOf`, `DARK_BELOW`, `nextPos`
-or the media rules.
+Open `test.html` in a browser. It prints **PASS** or lists what broke, and covers:
+
+- light/dark detection across known colours, including transparent
+- the speed ramp — starts at `V0`, accelerates, caps at `VMAX`, obeys `Shift`
+- movement maths — diagonals normalised, edge clamping, overshoot handed to scroll,
+  and a long stall between frames capped instead of teleporting the cursor
+- the key loop — `Enter` clicking the element underneath, held keys starting and
+  stopping the loop, the text-field guard, `Esc` cleaning up
+- the popup labels, including the regression where they waited on a message and so
+  said nothing at all
+
+Frame timestamps are injected rather than awaited, so a throttled background tab cannot
+make a passing build look broken. Run it after touching `luminanceOf`, `DARK_BELOW`,
+`advance`, `speedAt` or the media rules.
 
 ## Files
 

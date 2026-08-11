@@ -5,7 +5,18 @@ const BUTTONS = [
   { id: 'dark', label: 'dark theme', state: 'dark-state', toggle: 'toggle' },
 ];
 
-const relay = msg => chrome.runtime.sendMessage({ relay: msg });
+// The popup runs inside a window, so it can resolve the tab reliably; the worker
+// cannot. Pass the id along rather than making the worker guess.
+const myTab = async () =>
+  (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+
+const relay = async msg => {
+  try {
+    return await chrome.runtime.sendMessage({ relay: msg, tabId: await myTab() });
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+};
 
 function paint(b, on) {
   const el = document.getElementById(b.id);
@@ -32,6 +43,10 @@ async function refresh(b) {
 }
 
 function wire() {
+  // Label the buttons BEFORE asking the page anything. A label must never depend on a
+  // message round trip: if the tab cannot be reached you still need to read the button.
+  for (const b of BUTTONS) paint(b, false);
+
   // show the live shortcut rather than a hardcoded one, since it is user-rebindable
   const keyFor = { cursor: 'toggle-cursor', dark: 'toggle-dark' };
   chrome.commands.getAll().then(cmds => {
