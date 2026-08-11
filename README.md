@@ -112,6 +112,9 @@ reload. A mouse-replacement mode you forgot was armed is worse than one you re-a
   read asynchronously after the stylesheet is already in.
 - The cursor **cannot enter an iframe or a closed shadow root**, and neither shortcut
   fires on `chrome://` pages or the Web Store — extensions get no script there.
+- **After reloading the extension**, tabs you already had open still hold an orphaned
+  copy of the old scripts. The new copy takes over from it on load and sweeps any ring
+  it left behind, but reloading the page is still the cleanest way to start fresh.
 - The cursor **clicks, it does not drag**. Sliders, canvases and drag-and-drop still
   need the mouse; that would mean synthesising a full mousedown/move/up stream.
 
@@ -127,6 +130,10 @@ Open `test.html` in a browser. It prints **PASS** or lists what broke, and cover
   stopping the loop, the text-field guard, `Esc` cleaning up
 - the popup labels, including the regression where they waited on a message and so
   said nothing at all
+- **double injection** — both content scripts are deliberately loaded twice in the test
+  page, then checked for exactly one cursor, one stylesheet, and two *completed* runs.
+  The completed-run count is the important one: at top level the second run died on a
+  redeclaration, and that fight is what put two cursors on screen.
 
 Frame timestamps are injected rather than awaited, so a throttled background tab cannot
 make a passing build look broken. Run it after touching `luminanceOf`, `DARK_BELOW`,

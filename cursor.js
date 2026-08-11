@@ -1,5 +1,16 @@
 // Keyboard cursor — hold an arrow and the pointer glides, it does not hop.
 // Independent of dark mode: its own shortcut, its own state.
+//
+// Wrapped in a function so running this file twice in one page is harmless. It happens:
+// the worker injects into tabs that predate the extension, and reloading an unpacked
+// extension leaves an orphaned copy behind in every open tab. At top level those two
+// copies fought and each drew its own cursor — hence two rings on screen.
+(() => {
+// Hand over from an earlier copy instead of running alongside it.
+globalThis.darkAnyCursor?.cursorOff?.();
+// counts completed executions, so a test can prove a second one ran instead of dying
+globalThis.__darkAnyCursorLoads = (globalThis.__darkAnyCursorLoads || 0) + 1;
+
 // Knobs are physical: these are pixels per second on a real screen. Tune to taste.
 const V0 = 320;      // speed the instant a key goes down, px/s
 const VMAX = 2400;   // ceiling, px/s
@@ -120,6 +131,8 @@ function onKeyUp(e) {
 
 function cursorOn() {
   if (dot) return;
+  // sweep any ring left behind by an orphaned copy before drawing ours
+  document.querySelectorAll('#' + CURSOR_ID).forEach(el => el.remove());
   dot = document.createElement('div');
   dot.id = CURSOR_ID;
   dot.style.cssText = `position:absolute;left:0;top:0;width:18px;height:18px;margin:-9px 0 0 -9px;
@@ -164,3 +177,4 @@ globalThis.darkAnyCursor = {
   step, resetRun, held, isMoving: () => !!raf,
   V0, VMAX, ACCEL, FAST, CURSOR_ID,
 };
+})();

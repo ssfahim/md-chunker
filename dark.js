@@ -1,4 +1,8 @@
 // Dark Any Page — invert the page, un-invert the media, calm the text.
+// Wrapped like cursor.js so a second injection into the same page is harmless
+// rather than a redeclaration that kills the whole script.
+(() => {
+globalThis.__darkAnyLoads = (globalThis.__darkAnyLoads || 0) + 1; // see cursor.js
 // Perceptual knobs. Screens and eyes differ; tune these, not the logic.
 const CONTRAST = 0.92;   // pure invert looks harsh; back it off slightly
 const BRIGHTNESS = 1.06; // ...then lift it back so body text isn't muddy
@@ -81,3 +85,4 @@ if (store) {
 }
 
 globalThis.darkAny = { luminanceOf, pageIsDark, on, off, CSS, DARK_BELOW };
+})();

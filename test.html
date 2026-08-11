@@ -15,6 +15,10 @@
 
 <script src="dark.js"></script>
 <script src="cursor.js"></script>
+<!-- Loaded a SECOND time on purpose: this is what the worker's injection does to a
+     page that already has the content scripts. It used to produce two cursors. -->
+<script src="dark.js"></script>
+<script src="cursor.js"></script>
 <script src="popup.js"></script>
 
 <script>
@@ -88,6 +92,29 @@ kc.cursorOn();
 ok(!!document.getElementById(kc.CURSOR_ID), 'cursorOn must draw the cursor');
 kc.cursorOn();
 ok(document.querySelectorAll('#' + kc.CURSOR_ID).length === 1, 'cursorOn twice must not stack two cursors');
+
+// Both scripts were loaded twice above. If a second copy can run alongside the first,
+// each keeps its own cursor and the page ends up with two rings.
+const strays = document.querySelectorAll('#' + kc.CURSOR_ID).length;
+ok(strays === 1, `a double injection must leave exactly one cursor, found ${strays}`);
+
+// ...and prove the second execution actually completed. At top level it died on a
+// redeclaration instead, which is what made the two copies fight in the first place.
+ok(globalThis.__darkAnyCursorLoads === 2,
+   `cursor.js must survive being run twice (completed runs: ${globalThis.__darkAnyCursorLoads})`);
+ok(globalThis.__darkAnyLoads === 2,
+   `dark.js must survive being run twice (completed runs: ${globalThis.__darkAnyLoads})`);
+ok(document.querySelectorAll('style#dark-any').length <= 1, 'a double run must not stack two stylesheets');
+
+// and a ring abandoned by an orphaned copy must be swept, not added to
+kc.cursorOff();
+const ghost = document.createElement('div');
+ghost.id = kc.CURSOR_ID;
+document.body.append(ghost);
+kc.cursorOn();
+ok(document.querySelectorAll('#' + kc.CURSOR_ID).length === 1,
+   'an abandoned ring must be cleared away, not joined by a second one');
+
 kc.cursorOff();
 ok(!document.getElementById(kc.CURSOR_ID), 'cursorOff must remove the cursor');
 kc.cursorOff(); // must not throw on a second call
