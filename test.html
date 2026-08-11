@@ -6,8 +6,16 @@
 <pre id="out">running…</pre>
 <div id="probe" style="background:#ffffff">probe</div>
 
+<!-- the popup's markup, so popup.js has the elements it paints -->
+<div id="popup-fixture" hidden>
+  <button id="cursor" aria-pressed="false">…<span class="keys"></span></button>
+  <button id="dark" aria-pressed="false">…<span class="keys"></span></button>
+  <p id="err" hidden></p>
+</div>
+
 <script src="dark.js"></script>
 <script src="cursor.js"></script>
+<script src="popup.js"></script>
 <script>
 const fails = [];
 const ok = (cond, what) => { if (!cond) fails.push(what); };
@@ -104,6 +112,36 @@ ok(darkAny.CSS.includes('#dark-any-cursor'), 'dark CSS must un-flip the cursor o
 
   btn.remove();
   inp.remove();
+})();
+
+// --- popup buttons ---
+(() => {
+  const p = darkAnyPopup;
+  const cursorBtn = p.BUTTONS.find(b => b.id === 'cursor');
+  const darkBtn = p.BUTTONS.find(b => b.id === 'dark');
+
+  p.paint(cursorBtn, false);
+  ok(document.getElementById('cursor').textContent.startsWith('Activate cursor'),
+     'an off cursor must offer to activate it');
+  p.paint(cursorBtn, true);
+  ok(document.getElementById('cursor').textContent.startsWith('Deactivate cursor'),
+     'an on cursor must offer to deactivate it');
+  ok(document.getElementById('cursor').getAttribute('aria-pressed') === 'true',
+     'the button must report its state to screen readers');
+
+  p.paint(darkBtn, false);
+  ok(document.getElementById('dark').textContent.startsWith('Activate dark theme'),
+     'the dark button must name the dark theme');
+
+  // the shortcut span must survive repainting, or the hint disappears on first click
+  ok(!!document.querySelector('#cursor .keys'), 'repainting must not wipe the shortcut hint');
+
+  ok(p.errText('Cannot access contents of url "chrome://extensions"').includes('browser pages'),
+     'a browser-page failure must be explained, not dumped raw');
+  ok(p.errText('no tab') === 'no tab', 'an unknown error must pass through unchanged');
+
+  p.fail('no tab');
+  ok(!document.getElementById('err').hidden, 'fail() must reveal the error line');
 })();
 
 out.textContent = fails.length ? 'FAIL\n' + fails.join('\n') : 'PASS — all checks green';

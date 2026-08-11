@@ -3,7 +3,7 @@
   "name": "Dark Any Page",
   "version": "1.0.0",
   "description": "Turns light pages dark, keeps images normal and text legible. Click the toolbar button to force a site on or off.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "sw.js" },
   "content_scripts": [
@@ -14,9 +14,12 @@
       "all_frames": false
     }
   ],
-  "action": { "default_title": "Toggle dark on this site" },
+  "action": { "default_title": "Dark Any Page", "default_popup": "popup.html" },
   "commands": {
-    "_execute_action": { "suggested_key": { "default": "Alt+Shift+D" } },
+    "toggle-dark": {
+      "suggested_key": { "default": "Alt+Shift+D" },
+      "description": "Toggle dark mode on this site"
+    },
     "toggle-cursor": {
       "suggested_key": { "default": "Alt+Shift+C" },
       "description": "Toggle the keyboard cursor"

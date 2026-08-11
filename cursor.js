@@ -92,10 +92,13 @@ function cursorOff() {
 }
 
 if (globalThis.chrome?.runtime?.onMessage) {
-  chrome.runtime.onMessage.addListener(msg => {
+  chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
     // Session-only on purpose: a mouse-replacement mode you forgot was on is worse
     // than one you re-arm, so it never persists across page loads.
-    if (msg === 'toggle-cursor') (dot ? cursorOff : cursorOn)();
+    if (msg === 'cursor-state') return void respond(!!dot);
+    if (msg !== 'toggle-cursor') return;
+    (dot ? cursorOff : cursorOn)();
+    respond(!!dot);
   });
 }
 

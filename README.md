@@ -10,6 +10,17 @@ A browser extension with two independent features:
 Same extension runs on **macOS and Windows** — Chrome, Edge and Brave load identical
 files on both. There is nothing OS-specific to build.
 
+## The popup
+
+Click the toolbar icon. Two buttons, each showing its own shortcut and outlined in green
+while that feature is active:
+
+- **Activate cursor** / Deactivate cursor
+- **Activate dark theme** / Deactivate dark theme
+
+The buttons are the reliable path — they work on tabs that were already open when the
+extension loaded, which is exactly where the shortcuts used to do nothing (see below).
+
 ## Shortcuts
 
 | Action | macOS | Windows |
@@ -17,7 +28,15 @@ files on both. There is nothing OS-specific to build.
 | Toggle the keyboard cursor | `Opt` `Shift` `C` | `Alt` `Shift` `C` |
 | Toggle dark mode on this site | `Opt` `Shift` `D` (or the toolbar button) | `Alt` `Shift` `D` (or the toolbar button) |
 
-Same shortcut turns the cursor off again. Rebind either at `chrome://extensions/shortcuts`.
+Same shortcut turns the cursor off again. Rebind either at `chrome://extensions/shortcuts`
+— and check there first if a shortcut does nothing, because Chrome silently leaves a
+suggested key unassigned when something else already owns it.
+
+**If a shortcut looks dead on a tab you already had open:** it was, and now it is fixed.
+Chrome only injects content scripts into pages loaded *after* the extension, so every
+tab open at "Load unpacked" time had nothing listening, and the message was dropped
+silently. The worker now injects the scripts on that first failed message and retries,
+so both the buttons and the shortcuts work on old tabs without a reload.
 
 **Why not `Cmd`+`Opt`+`C`:** Chrome refuses to load an extension that asks for it.
 `Ctrl+Alt+*` is banned outright (it collides with AltGr on Windows layouts) and
@@ -101,8 +120,9 @@ or the media rules.
 
 | File | Role |
 |------|------|
-| `manifest.json` | MV3 manifest: all-URL content scripts, toolbar action, both shortcuts |
+| `manifest.json` | MV3 manifest: all-URL content scripts, popup, both shortcuts |
 | `dark.js` | Dark mode — CSS, luminance detection, per-site toggle |
 | `cursor.js` | Keyboard cursor — movement maths, hover and click, session state |
-| `sw.js` | Toolbar click and the cursor shortcut → tell the page to toggle |
-| `test.html` | Self-check for both features |
+| `sw.js` | Routes shortcuts and popup clicks to the page, injecting first if needed |
+| `popup.html` / `popup.js` | The two buttons |
+| `test.html` | Self-check for all three |

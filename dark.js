@@ -55,21 +55,28 @@ if (store) {
 
   // ponytail: storage read is async, so a forced-off site flashes dark for a frame.
   // Live with it, or move the site list into a document_start-injected CSS rule.
-  addEventListener('DOMContentLoaded', async () => {
+  const settle = async () => {
     const { sites = {} } = await store.get('sites');
     const pref = sites[location.hostname];
     if (pref === 'off') return off();
     if (pref === 'on') return on();
     if (pageIsDark()) off(); // site already ships a dark theme, leave it alone
-  });
+  };
+  // Not just DOMContentLoaded: when injected into an already-open tab that event
+  // has long fired, and we would never correct ourselves off a dark site.
+  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', settle);
+  else settle();
 
-  chrome.runtime.onMessage.addListener(async msg => {
+  chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
+    if (msg === 'dark-state') { respond(!!document.getElementById(STYLE_ID)); return; }
     if (msg !== 'toggle') return;
-    const nowOn = !!document.getElementById(STYLE_ID);
-    nowOn ? off() : on();
-    const { sites = {} } = await store.get('sites');
-    sites[location.hostname] = nowOn ? 'off' : 'on';
-    await store.set({ sites });
+    const wasOn = !!document.getElementById(STYLE_ID);
+    wasOn ? off() : on();
+    respond(!wasOn);
+    store.get('sites').then(({ sites = {} }) => {
+      sites[location.hostname] = wasOn ? 'off' : 'on';
+      store.set({ sites });
+    });
   });
 }
 

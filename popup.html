@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dark Any Page</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font: 14px/1.4 system-ui, sans-serif; background: #16181c; color: #e6e6e6;
+         margin: 0; padding: 12px; width: 240px; }
+  button { display: block; width: 100%; font: inherit; text-align: left; cursor: pointer;
+           margin-bottom: 8px; padding: 10px 12px; border-radius: 8px;
+           border: 1px solid #333940; background: #1d2026; color: #e6e6e6; }
+  button:hover { background: #262a31; }
+  button[aria-pressed="true"] { border-color: #4ade80; }
+  .keys { color: #8b939c; font-size: 12px; float: right; }
+  #err { color: #f87171; font-size: 12px; margin: 4px 0 0; }
+  p { margin: 0; }
+</style>
+
+<button id="cursor" aria-pressed="false">…<span class="keys"></span></button>
+<button id="dark" aria-pressed="false">…<span class="keys"></span></button>
+<p id="err" hidden></p>
+
+<script src="popup.js"></script>
