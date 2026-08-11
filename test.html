@@ -7,6 +7,7 @@
 <div id="probe" style="background:#ffffff">probe</div>
 
 <script src="dark.js"></script>
+<script src="cursor.js"></script>
 <script>
 const fails = [];
 const ok = (cond, what) => { if (!cond) fails.push(what); };
@@ -27,6 +28,83 @@ ok(/\bimg\b/.test(darkAny.CSS) && /\bvideo\b/.test(darkAny.CSS), 'CSS must re-in
 // pageIsDark reads the live document, not a string
 ok(typeof darkAny.pageIsDark() === 'boolean', 'pageIsDark must return a boolean');
 ok(darkAny.pageIsDark() === false, 'this page is white, so pageIsDark must be false');
+
+// --- keyboard cursor movement ---
+// don't destructure: these scripts share one global scope, so a matching
+// name here would be a redeclaration, not a local
+const kc = darkAnyCursor, move = kc.nextPos;
+const VW = 800, VH = 600;
+const at = (x, y) => ({ x, y });
+
+let m = move(at(400, 300), 'ArrowRight', false, VW, VH);
+ok(m.x === 400 + kc.STEP && m.y === 300, 'right arrow moves one step right, nothing vertical');
+ok(!m.scroll.dx && !m.scroll.dy, 'a move inside the viewport must not scroll');
+
+m = move(at(400, 300), 'ArrowUp', false, VW, VH);
+ok(m.y === 300 - kc.STEP, 'up arrow decreases y');
+
+m = move(at(400, 300), 'ArrowLeft', true, VW, VH);
+ok(m.x === 400 - kc.STEP * kc.FAST, 'shift makes the step FAST times bigger');
+
+// past an edge: the cursor pins to the edge and the page scrolls the remainder
+m = move(at(VW - 2, 300), 'ArrowRight', false, VW, VH);
+ok(m.x === VW - 1, 'cursor must clamp to the right edge, never leave the viewport');
+ok(m.scroll.dx === kc.STEP - 1, 'the overshoot becomes scroll, so nothing is lost');
+
+m = move(at(5, 5), 'ArrowUp', false, VW, VH);
+ok(m.y === 0 && m.scroll.dy === 5 - kc.STEP, 'at the top it clamps to 0 and scrolls up');
+ok(m.scroll.dy < 0, 'scrolling up must be negative');
+
+m = move(at(400, VH - 1), 'ArrowDown', true, VW, VH);
+ok(m.y === VH - 1 && m.scroll.dy === kc.STEP * kc.FAST, 'a fast move at the bottom scrolls a full fast step');
+
+// toggling must leave nothing behind
+darkAnyCursor.cursorOn();
+ok(!!document.getElementById(darkAnyCursor.CURSOR_ID), 'cursorOn must draw the cursor');
+darkAnyCursor.cursorOn();
+ok(document.querySelectorAll('#' + darkAnyCursor.CURSOR_ID).length === 1, 'cursorOn twice must not stack two cursors');
+darkAnyCursor.cursorOff();
+ok(!document.getElementById(darkAnyCursor.CURSOR_ID), 'cursorOff must remove the cursor');
+darkAnyCursor.cursorOff(); // must not throw on a second call
+
+// dark mode has to un-flip the cursor, or it shows up in the wrong colours
+ok(darkAny.CSS.includes('#dark-any-cursor'), 'dark CSS must un-flip the cursor overlay');
+
+// --- the real key loop: move, click, keep out of text fields ---
+(() => {
+  const btn = document.createElement('button');
+  btn.textContent = 'target';
+  btn.style.cssText = 'position:fixed;left:0;top:0;width:200px;height:60px';
+  let clicks = 0;
+  btn.onclick = () => clicks++;
+  const inp = document.createElement('input');
+  document.body.append(btn, inp);
+  const key = (k, shift) => dispatchEvent(
+    new KeyboardEvent('keydown', { key: k, shiftKey: !!shift, bubbles: true, cancelable: true }));
+
+  kc.cursorOn();
+  const dot = document.getElementById(kc.CURSOR_ID);
+  const start = dot.style.transform;
+  key('ArrowRight');
+  ok(dot.style.transform !== start, 'an arrow key must move the drawn cursor');
+
+  for (let i = 0; i < 40; i++) key('ArrowLeft');   // over-travel: must clamp, not escape
+  for (let i = 0; i < 40; i++) key('ArrowUp');
+  key('Enter');
+  ok(clicks === 1, 'Enter must click whatever sits under the cursor');
+
+  inp.focus();
+  const parked = dot.style.transform;
+  key('ArrowRight');
+  ok(dot.style.transform === parked, 'arrows inside a text field must stay text editing');
+  inp.blur();
+
+  key('Escape');
+  ok(!document.getElementById(kc.CURSOR_ID), 'Escape must remove the cursor');
+
+  btn.remove();
+  inp.remove();
+})();
 
 out.textContent = fails.length ? 'FAIL\n' + fails.join('\n') : 'PASS — all checks green';
 out.style.color = fails.length ? 'crimson' : 'green';

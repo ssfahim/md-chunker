@@ -18,6 +18,8 @@ img, video, canvas, svg, picture, embed, object,
 /* escape hatch: let this element stay flipped — for black-on-transparent logos
    and line diagrams, which vanish when their colours are preserved */
 [data-dark-any-flip] { filter: none !important; }
+/* our own keyboard cursor is drawn in final colours, so undo the flip for it too */
+#dark-any-cursor { filter: ${FLIP} !important; }
 /* text tuned for a light background gets halos once flipped */
 * { text-shadow: none !important; }
 `;

@@ -9,13 +9,17 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["dark.js"],
+      "js": ["dark.js", "cursor.js"],
       "run_at": "document_start",
       "all_frames": false
     }
   ],
   "action": { "default_title": "Toggle dark on this site" },
   "commands": {
-    "_execute_action": { "suggested_key": { "default": "Alt+Shift+D" } }
+    "_execute_action": { "suggested_key": { "default": "Alt+Shift+D" } },
+    "toggle-cursor": {
+      "suggested_key": { "default": "Ctrl+Alt+C", "mac": "Command+Alt+C" },
+      "description": "Toggle the keyboard cursor"
+    }
   }
 }
