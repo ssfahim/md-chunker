@@ -107,20 +107,29 @@ reload. A mouse-replacement mode you forgot was armed is worse than one you re-a
 
 ## PDFs
 
-PDFs are darkened, but they need special handling for two reasons:
+PDFs get **dimmed, not inverted** — `PDF_MODE = 'dim'` in `dark.js`. The paper drops to a
+soft grey instead of glaring white, and the viewer's toolbar, sidebar and surround stay
+dark.
 
-- The page you can script is a bare wrapper — the paper itself is drawn by a separate
-  browser process and is not in that DOM at all. A filter on `<html>` still reaches it,
-  which is what makes this work.
-- That wrapper's `body` is the viewer's dark grey chrome, so the "already dark" check
-  used to bail out and leave the paper blazing white. PDFs now override that check.
+That is a deliberate compromise, forced by a hard limit. In the built-in viewer, the
+document you can script is a bare wrapper; the paper, the chrome and the surround are all
+painted by a separate browser process, so **nothing in there can be selected
+individually** — a filter on `<html>` hits the lot. Invert it and yes, the paper goes
+black, but the viewer's dark chrome and its large surround go bright, which is worse to
+read against than the white paper was.
 
-The trade-off: because the whole viewer is inverted together, the toolbar and sidebar go
-light while the paper goes dark. They cannot be separated — they live inside the same
-plugin frame, out of reach.
+And no clever filter escapes it: the paper's white (255) must become dark while the
+toolbar's icons (~230, nearly the same value) must stay light. No per-pixel function can
+send two near-identical values in opposite directions, so **dark paper plus dark surround
+is not achievable** from an extension.
 
-A PDF embedded in an ordinary page is handled too: it would otherwise be caught by the
-"protect media" rule and handed back white.
+If you want true white-on-black paper and can live with a bright surround, set
+`PDF_MODE = 'invert'`. `PDF_DIM` (default `0.45`) sets how far the paper is dimmed.
+Either way `Alt`/`Opt`+`Shift`+`D` still turns the whole thing off per site, back to the
+browser's untouched view.
+
+A PDF embedded in an ordinary page is handled separately: it inherits the page's flip,
+where it would otherwise be caught by the "protect media" rule and handed back white.
 
 ## Known ceilings
 

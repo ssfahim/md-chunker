@@ -64,6 +64,14 @@ ok(d('on', false, true) === 'on', 'forcing a dark site on must still win');
 ok(typeof darkAny.isPdfViewer() === 'boolean', 'the PDF check must return a boolean');
 ok(darkAny.isPdfViewer() === false, 'this page is HTML, so it is not the PDF viewer');
 
+// PDF treatment: the viewer's chrome is out of reach, so inverting the paper would turn
+// that dark chrome bright. Dimming must not invert anything.
+ok(['dim', 'invert'].includes(darkAny.PDF_MODE), 'PDF_MODE must be one of the two modes');
+const dimCss = darkAny.pdfCssFor('dim');
+ok(/brightness\(/.test(dimCss), 'dim mode must work by brightness');
+ok(!/invert\(/.test(dimCss), 'dim mode must NOT invert, or the surround goes bright again');
+ok(darkAny.pdfCssFor('invert') === darkAny.CSS, 'invert mode must reuse the normal stylesheet');
+
 // an embedded PDF must flip with the page instead of being protected as media
 ok(/embed\[type="application\/pdf"\][^}]*filter:\s*none/.test(darkAny.CSS.replace(/\s+/g, ' ')),
    'CSS must let an embedded PDF inherit the flip');

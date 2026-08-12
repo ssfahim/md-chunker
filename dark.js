@@ -31,11 +31,23 @@ embed[type="application/pdf"], object[type="application/pdf"] { filter: none !im
 * { text-shadow: none !important; }
 `;
 
+// PDFs get their own treatment. The viewer's toolbar, sidebar and the whole surround are
+// painted by a separate process we cannot select, so one filter hits everything: invert
+// the paper and that dark chrome turns bright. Dimming leaves the chrome dark and takes
+// the glare off the paper instead. Switch to 'invert' if you would rather have true
+// white-on-black paper and can live with a light surround — you cannot have both.
+const PDF_MODE = 'dim';  // 'dim' | 'invert'
+const PDF_DIM = 0.45;    // paper brightness when dimming — knob, taste and screen vary
+
+const pdfCssFor = mode => mode === 'invert' ? CSS : `
+html { filter: brightness(${PDF_DIM}) contrast(1.08) !important; }
+`;
+
 const on = () => {
   if (document.getElementById(STYLE_ID)) return;
   const el = document.createElement('style');
   el.id = STYLE_ID;
-  el.textContent = CSS;
+  el.textContent = isPdfViewer() ? pdfCssFor(PDF_MODE) : CSS;
   (document.head || document.documentElement).append(el);
 };
 
@@ -97,5 +109,8 @@ if (store) {
   });
 }
 
-globalThis.darkAny = { luminanceOf, pageIsDark, isPdfViewer, decide, on, off, CSS, DARK_BELOW };
+globalThis.darkAny = {
+  luminanceOf, pageIsDark, isPdfViewer, decide, on, off,
+  pdfCssFor, PDF_MODE, CSS, DARK_BELOW,
+};
 })();
