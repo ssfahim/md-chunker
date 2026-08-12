@@ -14,6 +14,15 @@ async function send(tabId, msg) {
 
 // lastFocusedWindow, NOT currentWindow: a service worker has no window of its own,
 // so currentWindow can match nothing and every message dies with "no tab".
+// Declared content scripts are not guaranteed to run in the built-in PDF viewer, so
+// nudge them in once the tab settles. Safe to do blind: both scripts are idempotent and
+// hand over from any earlier copy, and this is a no-op where injection is refused.
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status !== 'complete') return;
+  if (!/\.pdf(\?|#|$)/i.test(tab?.url || '')) return;
+  chrome.scripting.executeScript({ target: { tabId }, files: FILES }).catch(() => {});
+});
+
 const activeId = async () =>
   (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id;
 

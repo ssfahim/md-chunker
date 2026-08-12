@@ -105,6 +105,23 @@ they edit text, and the cursor stays parked until you click out.
 The cursor is deliberately **session-only**: it never comes back on by itself after a
 reload. A mouse-replacement mode you forgot was armed is worse than one you re-arm.
 
+## PDFs
+
+PDFs are darkened, but they need special handling for two reasons:
+
+- The page you can script is a bare wrapper — the paper itself is drawn by a separate
+  browser process and is not in that DOM at all. A filter on `<html>` still reaches it,
+  which is what makes this work.
+- That wrapper's `body` is the viewer's dark grey chrome, so the "already dark" check
+  used to bail out and leave the paper blazing white. PDFs now override that check.
+
+The trade-off: because the whole viewer is inverted together, the toolbar and sidebar go
+light while the paper goes dark. They cannot be separated — they live inside the same
+plugin frame, out of reach.
+
+A PDF embedded in an ordinary page is handled too: it would otherwise be caught by the
+"protect media" rule and handed back white.
+
 ## Known ceilings
 
 - **Logos that are black on transparent** (e.g. Wikipedia's wordmark) keep their
@@ -126,6 +143,11 @@ reload. A mouse-replacement mode you forgot was armed is worse than one you re-a
   need the mouse; that would mean holding the button down across a move.
 - Clicks are synthetic, so `event.isTrusted` is false. The rare handler that insists on
   a trusted event will ignore the cursor, and nothing short of a real mouse fixes that.
+- The **keyboard cursor does not work inside the PDF viewer** — the viewer is a separate
+  process, so key events and hit testing never reach the page. Only the darkening does.
+- PDFs are recognised by a `.pdf` URL, plus the worker injects into such tabs on load in
+  case content scripts are not run there by default. A PDF served from a URL with no
+  `.pdf` in it relies on the content script alone.
 
 ## Check
 

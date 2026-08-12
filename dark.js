@@ -19,6 +19,9 @@ html {
 /* cancel the flip for anything that carries its own colours */
 img, video, canvas, svg, picture, embed, object,
 [style*="background-image"] { filter: ${FLIP} !important; }
+/* A PDF is a white page, not artwork: let it flip with everything else. Without this
+   the rule above catches it as an embed and hands back a blazing white sheet. */
+embed[type="application/pdf"], object[type="application/pdf"] { filter: none !important; }
 /* escape hatch: let this element stay flipped — for black-on-transparent logos
    and line diagrams, which vanish when their colours are preserved */
 [data-dark-any-flip] { filter: none !important; }
@@ -52,6 +55,18 @@ function pageIsDark() {
   return luminanceOf(getComputedStyle(el).backgroundColor) < DARK_BELOW;
 }
 
+// The built-in PDF viewer is a trap for the luminance check: the page we can see is a
+// bare wrapper whose body is the viewer's dark grey chrome, so it reads as "already
+// dark" while the actual paper — drawn by the PDF process, not in this DOM — is white.
+const isPdfViewer = () => document.contentType === 'application/pdf';
+
+// Pure: given the stored preference and what the page looks like, on or off.
+function decide(pref, pdf, dark) {
+  if (pref === 'off' || pref === 'on') return pref; // the user's choice always wins
+  if (pdf) return 'on';
+  return dark ? 'off' : 'on';
+}
+
 const store = globalThis.chrome?.storage?.local;
 
 if (store) {
@@ -62,9 +77,7 @@ if (store) {
   const settle = async () => {
     const { sites = {} } = await store.get('sites');
     const pref = sites[location.hostname];
-    if (pref === 'off') return off();
-    if (pref === 'on') return on();
-    if (pageIsDark()) off(); // site already ships a dark theme, leave it alone
+    decide(pref, isPdfViewer(), pageIsDark()) === 'on' ? on() : off();
   };
   // Not just DOMContentLoaded: when injected into an already-open tab that event
   // has long fired, and we would never correct ourselves off a dark site.
@@ -84,5 +97,5 @@ if (store) {
   });
 }
 
-globalThis.darkAny = { luminanceOf, pageIsDark, on, off, CSS, DARK_BELOW };
+globalThis.darkAny = { luminanceOf, pageIsDark, isPdfViewer, decide, on, off, CSS, DARK_BELOW };
 })();

@@ -51,6 +51,23 @@ ok(darkAny.CSS.includes('#dark-any-cursor'), 'dark CSS must un-flip the cursor o
 ok(typeof darkAny.pageIsDark() === 'boolean', 'pageIsDark must return a boolean');
 ok(darkAny.pageIsDark() === false, 'this page is white, so pageIsDark must be false');
 
+// --- what to do on a given page: pref, pdf, dark ---
+const d = darkAny.decide;
+ok(d(undefined, false, false) === 'on', 'a plain white page must go dark');
+ok(d(undefined, false, true) === 'off', 'a page that already ships dark must be left alone');
+// The PDF viewer's wrapper body is the viewer's dark grey chrome, so the luminance check
+// says "already dark" while the paper itself is white. PDFs must override that.
+ok(d(undefined, true, true) === 'on', 'a PDF must be darkened despite its dark grey chrome');
+ok(d(undefined, true, false) === 'on', 'a PDF must be darkened either way');
+ok(d('off', true, false) === 'off', 'turning a PDF off by hand must still win');
+ok(d('on', false, true) === 'on', 'forcing a dark site on must still win');
+ok(typeof darkAny.isPdfViewer() === 'boolean', 'the PDF check must return a boolean');
+ok(darkAny.isPdfViewer() === false, 'this page is HTML, so it is not the PDF viewer');
+
+// an embedded PDF must flip with the page instead of being protected as media
+ok(/embed\[type="application\/pdf"\][^}]*filter:\s*none/.test(darkAny.CSS.replace(/\s+/g, ' ')),
+   'CSS must let an embedded PDF inherit the flip');
+
 // --- cursor speed ramp ---
 ok(kc.speedAt(0, false) === kc.V0, 'a fresh keypress starts at V0, not from a standstill');
 ok(kc.speedAt(100, false) > kc.speedAt(0, false), 'holding the key must accelerate');
@@ -168,7 +185,13 @@ const isTypingNow = () => {
 
 // Timestamps are injected rather than waiting on requestAnimationFrame: the display
 // may throttle frames to nothing in a background tab, and that must not read as a bug.
+const noViewport = !innerWidth || !innerHeight;
+
 (() => {
+  // A hidden or headless tab reports a 0x0 viewport, where every hit test returns null.
+  // Say so loudly instead of reporting a wall of failures that look like real bugs.
+  if (noViewport) return;
+
   // Target the top-left of the viewport: always visible, whatever the window size.
   // Then place() the cursor on it, rather than assuming where the spawn point lands.
   scrollTo(0, 0);
@@ -186,6 +209,14 @@ const isTypingNow = () => {
 
   kc.cursorOn();
   const dot = document.getElementById(kc.CURSOR_ID);
+  const spawn = el => {
+    el.style.position = 'absolute';
+    el.style.left = scrollX + 'px';
+    el.style.top = scrollY + 'px';
+    el.style.zIndex = '99999';
+    document.body.append(el);
+    return el;
+  };
   const centre = el => {
     const r = el.getBoundingClientRect();
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
@@ -203,11 +234,10 @@ const isTypingNow = () => {
   // A <button> would take focus and mask the bug by clearing the typing state.
   const plain = document.createElement('div');
   plain.textContent = 'plain clickable';
-  plain.style.cssText =
-    `position:absolute;left:${scrollX}px;top:${scrollY + 220}px;width:160px;height:40px`;
+  plain.style.cssText = 'width:160px;height:40px';
   let plainClicks = 0;
   plain.addEventListener('click', () => plainClicks++);
-  document.body.append(plain);
+  spawn(plain);
 
   inp.focus();
   ok(isTypingNow(), 'setup: a text field must really hold focus here');
@@ -222,9 +252,8 @@ const isTypingNow = () => {
 
   // ...but a text field UNDER the cursor keeps Enter, so forms still submit
   const formField = document.createElement('input');
-  formField.style.cssText =
-    `position:absolute;left:${scrollX}px;top:${scrollY + 280}px;width:160px;height:30px`;
-  document.body.append(formField);
+  formField.style.cssText = 'width:160px;height:30px';
+  spawn(formField);
   formField.focus();
   c = aimAt(formField);
   if (document.elementFromPoint(c.x, c.y) === formField) {
@@ -251,18 +280,17 @@ const isTypingNow = () => {
   // exist on SVG, so this used to throw and the keypress died — the reported "X won't
   // click". The click must still reach the button's own handler.
   const iconBtn = document.createElement('button');
-  iconBtn.style.cssText =
-    `position:absolute;left:${scrollX}px;top:${scrollY + 320}px;width:44px;height:44px;padding:0`;
+  iconBtn.style.cssText = 'width:44px;height:44px;padding:0';
   iconBtn.innerHTML =
     '<svg width="44" height="44" viewBox="0 0 44 44"><path d="M10 10 L34 34 M34 10 L10 34" stroke="black" stroke-width="6"/></svg>';
   let iconClicks = 0;
   iconBtn.addEventListener('click', () => iconClicks++);
-  document.body.append(iconBtn);
+  spawn(iconBtn);
   c = aimAt(iconBtn);
   const hitInsideIcon = document.elementFromPoint(c.x, c.y);
   ok(hitInsideIcon && hitInsideIcon.tagName.toLowerCase() !== 'button',
      'setup: the hit must land on the SVG inside, not the button itself');
-  ok(typeof hitInsideIcon.click === 'undefined',
+  ok(hitInsideIcon && typeof hitInsideIcon.click === 'undefined',
      'setup: SVG content really has no click() method — that was the bug');
   down('Enter');
   ok(iconClicks === 1, `an SVG icon button must click exactly once (got ${iconClicks})`);
@@ -272,8 +300,8 @@ const isTypingNow = () => {
   const link = document.createElement('a');
   link.href = '#cursor-reached-it';
   link.textContent = 'link';
-  link.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 380}px;width:80px;height:30px`;
-  document.body.append(link);
+  link.style.cssText = 'width:80px;height:30px';
+  spawn(link);
   location.hash = '';
   c = aimAt(link);
   if (document.elementFromPoint(c.x, c.y) === link) {
@@ -285,8 +313,8 @@ const isTypingNow = () => {
 
   // a button inside a shadow root: elementFromPoint stops at the host, so we must drill
   const host = document.createElement('div');
-  host.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 440}px;width:120px;height:40px`;
-  document.body.append(host);
+  host.style.cssText = 'width:120px;height:40px';
+  spawn(host);
   const shadow = host.attachShadow({ mode: 'open' });
   const inner = document.createElement('button');
   inner.textContent = 'inside shadow';
@@ -302,12 +330,12 @@ const isTypingNow = () => {
 
   // widgets that only listen for mousedown/mouseup must fire too
   const widget = document.createElement('div');
-  widget.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 80}px;width:120px;height:40px`;
+  widget.style.cssText = 'width:120px;height:40px';
   const seen = [];
   for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
     widget.addEventListener(type, () => seen.push(type));
   }
-  document.body.append(widget);
+  spawn(widget);
   c = aimAt(widget);
   ok(document.elementFromPoint(c.x, c.y) === widget, 'setup: the widget must sit under the cursor');
   kc.activate();
@@ -323,10 +351,10 @@ const isTypingNow = () => {
 
   // a text field under the cursor takes the caret, and must NOT be clicked away
   const field = document.createElement('input');
-  field.style.cssText = `position:absolute;left:${scrollX}px;top:${scrollY + 140}px;width:120px`;
+  field.style.cssText = 'width:120px;height:30px';
   let fieldClicks = 0;
   field.addEventListener('click', () => fieldClicks++);
-  document.body.append(field);
+  spawn(field);
   c = aimAt(field);
   if (document.elementFromPoint(c.x, c.y) === field) {
     kc.activate();
@@ -418,7 +446,15 @@ const isTypingNow = () => {
   btn.remove();
   inp.remove();
 
-  out.textContent = fails.length ? 'FAIL\n' + fails.join('\n') : 'PASS — all checks green';
-  out.style.color = fails.length ? 'crimson' : 'green';
 })();
+
+// Reporting lives outside the interactive block: an early return in there once skipped
+// the report entirely and left the page reading "running…" forever.
+const note = noViewport
+  ? '\n(skipped the interactive checks: this tab has a 0x0 viewport, so nothing is hittable)'
+  : '';
+out.textContent = fails.length
+  ? 'FAIL\n' + fails.join('\n') + note
+  : (noViewport ? 'PARTIAL — logic checks green' + note : 'PASS — all checks green');
+out.style.color = fails.length ? 'crimson' : (noViewport ? 'darkorange' : 'green');
 </script>
