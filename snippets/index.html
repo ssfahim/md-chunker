@@ -256,10 +256,16 @@ const S = {
 };
 
 const $ = id => document.getElementById(id);
+// Written to both tabs, so neither is a dead end. Defined once — an earlier version
+// reassigned this after the fact, which threw on a const and killed every line after it,
+// including the button handlers: the page rendered perfectly and did nothing at all.
 const setStatus = (msg, kind) => {
-  const el = $("status");
-  el.textContent = msg;
-  el.className = "status" + (kind ? " " + kind : "");
+  for (const id of ["status", "status2"]) {
+    const el = $(id);
+    if (!el) continue;
+    el.textContent = msg;
+    el.className = "status" + (kind ? " " + kind : "");
+  }
 };
 
 function api(method, body) {
@@ -406,15 +412,6 @@ function showTab(which) {
 }
 $("tab-snips").onclick = () => showTab("snips");
 $("tab-creds").onclick = () => showTab("creds");
-
-// Status and Save appear on both tabs, so neither is a dead end.
-const origSetStatus = setStatus;
-setStatus = (msg, kind) => {
-  origSetStatus(msg, kind);
-  const el = $("status2");
-  el.textContent = msg;
-  el.className = "status" + (kind ? " " + kind : "");
-};
 
 $("load").onclick = load;
 $("save").onclick = save;
