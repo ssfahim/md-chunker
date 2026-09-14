@@ -7,119 +7,124 @@
 <style>
   :root {
     --bg:#faf9f7; --fg:#1b1a18; --muted:#6b6862; --line:#e2ded7;
-    --card:#fff; --accent:#2f6f4e; --warn:#8a3d2c; --code:#f3f1ec;
+    --card:#fff; --accent:#2f6f4e; --warn:#8a3d2c; --code:#f3f1ec; --bar:#fffffff2;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#16161a; --fg:#eceae6; --muted:#9c988f; --line:#2e2e34;
-            --card:#1e1e23; --accent:#7fc9a0; --warn:#e0937f; --code:#24242b; }
+            --card:#1e1e23; --accent:#7fc9a0; --warn:#e0937f; --code:#24242b;
+            --bar:#16161af2; }
   }
   * { box-sizing:border-box }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 -apple-system,
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system,
          BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; }
-  .wrap { max-width:820px; margin:0 auto; padding:28px 20px 80px }
-  h1 { font-size:22px; margin:0 0 4px }
-  h2 { font-size:15px; margin:28px 0 8px; letter-spacing:.01em }
-  p.sub { color:var(--muted); margin:0 0 20px }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
-          padding:14px; margin-bottom:10px }
-  label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace }
+
+  /* Everything needed while working sits here and never scrolls away. */
+  .bar { position:sticky; top:0; z-index:10; background:var(--bar);
+         backdrop-filter:saturate(180%) blur(8px);
+         border-bottom:1px solid var(--line); padding:10px 16px }
+  .bar-row { display:flex; gap:8px; align-items:center; max-width:860px; margin:0 auto }
+  .bar h1 { font-size:16px; margin:0 10px 0 0; white-space:nowrap }
+  #search { flex:1; min-width:60px; padding:8px 11px; border:1px solid var(--line);
+            border-radius:8px; background:var(--bg); color:var(--fg); font:inherit }
+  .bar button { font:inherit; padding:8px 13px; border-radius:8px; border:1px solid var(--line);
+                background:var(--card); color:var(--fg); cursor:pointer; white-space:nowrap }
+  .bar button.primary { background:var(--accent); border-color:var(--accent); color:#fff }
+  .bar button:disabled { opacity:.45; cursor:default }
+  .bar .status { max-width:860px; margin:6px auto 0; font-size:12.5px; color:var(--muted) }
+  .bar .status.bad { color:var(--warn) } .bar .status.good { color:var(--accent) }
+  .dot { display:inline-block; width:7px; height:7px; border-radius:50%;
+         background:var(--warn); margin-left:6px; vertical-align:middle }
+
+  .wrap { max-width:860px; margin:0 auto; padding:14px 16px 100px }
+  .row { display:flex; gap:8px; align-items:center }
+
+  /* One line per shortcut, so a long list stays scannable. */
+  .snip { border:1px solid var(--line); border-radius:9px; background:var(--card);
+          margin-bottom:7px; overflow:hidden }
+  .snip summary { list-style:none; cursor:pointer; padding:10px 12px; display:flex;
+                  gap:10px; align-items:baseline }
+  .snip summary::-webkit-details-marker { display:none }
+  .snip .trig { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+                font-weight:600; white-space:nowrap }
+  .snip .peek { color:var(--muted); font-size:13px; overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap; flex:1 }
+  .snip .len { color:var(--muted); font-size:11.5px; white-space:nowrap }
+  .snip[open] { border-color:var(--accent) }
+  .body { padding:0 12px 12px; border-top:1px solid var(--line) }
+  label { display:block; font-size:12px; color:var(--muted); margin:10px 0 4px }
   input, textarea { width:100%; padding:9px 10px; border:1px solid var(--line);
-                    border-radius:7px; background:var(--bg); color:var(--fg);
-                    font:inherit }
-  textarea { resize:vertical; min-height:90px }
-  input.mono, textarea.mono, pre { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-                                   font-size:13px }
-  button { font:inherit; padding:9px 16px; border-radius:7px; border:1px solid var(--line);
-           background:var(--card); color:var(--fg); cursor:pointer }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff }
-  button:disabled { opacity:.5; cursor:default }
-  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
-  .grow { flex:1 1 200px }
-  pre { background:var(--code); border:1px solid var(--line); border-radius:8px;
-        padding:12px; overflow:auto; margin:0; white-space:pre-wrap; word-break:break-word }
-  .status { font-size:13px; color:var(--muted); min-height:20px; margin:10px 0 }
-  .status.bad { color:var(--warn) }
-  .status.good { color:var(--accent) }
-  details { border:1px solid var(--line); border-radius:10px; padding:12px;
-            background:var(--card); margin-bottom:14px }
-  summary { cursor:pointer; font-weight:600 }
-  details p, details li { color:var(--muted); font-size:14px }
-  .trigger { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-             font-weight:600 }
-  .fixes { font-size:12px; color:var(--accent); margin-top:6px }
-  .del { color:var(--warn); border-color:transparent; background:transparent; padding:4px 8px }
-  .tabs { display:flex; gap:6px; border-bottom:1px solid var(--line); margin:18px 0 18px }
-  .tabs button { border:none; background:none; border-radius:0; padding:10px 14px;
-                 color:var(--muted); border-bottom:2px solid transparent; font-weight:600 }
-  .tabs button.on { color:var(--fg); border-bottom-color:var(--accent) }
+                    border-radius:7px; background:var(--bg); color:var(--fg); font:inherit }
+  textarea { resize:vertical; min-height:120px; font-size:14px }
+  .del { color:var(--warn); background:none; border:1px solid transparent; cursor:pointer;
+         padding:5px 9px; border-radius:7px; font:inherit }
+  .fixes { font-size:12px; color:var(--accent); margin-top:6px; min-height:16px }
+  .empty { color:var(--muted); text-align:center; padding:40px 0 }
+  pre { background:var(--code); border:1px solid var(--line); border-radius:8px; padding:12px;
+        overflow:auto; margin:0; white-space:pre-wrap; word-break:break-word; font-size:12.5px }
+  details.plain { border:1px solid var(--line); border-radius:9px; padding:12px;
+                  background:var(--card); margin-top:16px }
+  details.plain summary { cursor:pointer; font-weight:600 }
+  details.plain p, details.plain li { color:var(--muted); font-size:14px }
   .panel { display:none } .panel.on { display:block }
+  .tabs { display:flex; gap:4px }
+  .tabs button.on { background:var(--accent); border-color:var(--accent); color:#fff }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-<h1>Snippets</h1>
-<p class="sub">Paste text, it gets cleaned up, and saving writes it straight to GitHub.
-Every machine reading that repo picks it up. Your token stays in this browser and is
-sent only to GitHub.</p>
-
-<details>
-  <summary>Why this page exists</summary>
-  <p><strong>YAML gives up on a whole file for one bad entry.</strong> A multi-line snippet is
-  written as <code>replace: |</code> followed by <em>indented</em> lines — and the indentation
-  is not cosmetic, it is what marks where the block ends. Paste text at the left margin and
-  YAML decides the file ended there, so Espanso loads <em>nothing</em>: not just the broken
-  snippet, but every other shortcut too. That has already happened once.</p>
-  <p><strong>Copied text carries HTML escaping.</strong> Text out of a web page arrives with
-  <code>&amp;#39;</code> where an apostrophe should be, and it is easy not to notice until it
-  types out literally.</p>
-  <p>So this page takes plain pasted text, indents it correctly, decodes the escaping, and
-  shows you the exact file before it is written. Nothing here is clever — it removes two
-  mistakes that cost far more than they should.</p>
-</details>
-
-<div class="tabs">
-  <button id="tab-snips" class="on">Shortcuts</button>
-  <button id="tab-creds">Credentials</button>
-</div>
-
-<div id="panel-creds" class="panel">
-<div class="card">
-  <div class="row">
-    <div class="grow">
-      <label for="repo">Repository</label>
-      <input id="repo" class="mono" placeholder="ssfahim/snippets">
-    </div>
-    <div class="grow">
-      <label for="path">File</label>
-      <input id="path" class="mono" placeholder="snippets.yml">
-    </div>
-  </div>
-  <div style="margin-top:10px">
-    <label for="token">Fine-grained token — Contents: read and write. Kept in this browser only.</label>
-    <input id="token" class="mono" type="password" placeholder="github_pat_...">
-  </div>
-  <div class="row" style="margin-top:12px">
-    <button id="load">Load from GitHub</button>
-    <button id="save" class="primary" disabled>Save to GitHub</button>
+<div class="bar">
+  <div class="bar-row">
+    <h1>Snippets</h1>
+    <input id="search" type="search" placeholder="Search shortcuts…" autocomplete="off">
+    <button id="add">+ Add</button>
+    <button id="save" class="primary" disabled>Save</button>
+    <div class="tabs"><button id="tab-creds" title="GitHub settings">⚙</button></div>
   </div>
   <div id="status" class="status">Not loaded yet.</div>
 </div>
+
+<div class="wrap">
+
+  <div id="panel-creds" class="panel">
+    <label for="repo">Repository</label>
+    <input id="repo" class="mono" placeholder="ssfahim/snippets">
+    <label for="path">File</label>
+    <input id="path" class="mono" placeholder="snippets.yml">
+    <label for="token">Fine-grained token — Contents: read and write. Kept in this browser only.</label>
+    <input id="token" class="mono" type="password" placeholder="github_pat_...">
+    <div class="row" style="margin-top:12px">
+      <button id="load">Load from GitHub</button>
+      <button id="done-creds">Back to shortcuts</button>
+    </div>
+  </div>
+
+  <div id="panel-snips" class="panel on">
+    <div id="list"></div>
+    <div id="count" class="empty"></div>
+
+    <details class="plain">
+      <summary>What will be written</summary>
+      <pre id="preview">—</pre>
+    </details>
+
+    <details class="plain">
+      <summary>Why this page exists</summary>
+      <p><strong>YAML gives up on a whole file for one bad entry.</strong> A multi-line snippet is
+      written as <code>replace: |</code> followed by <em>indented</em> lines, and that indentation
+      is what marks where the block ends. Paste text at the left margin and YAML decides the file
+      ended there, so Espanso loads <em>nothing</em> — not just the broken snippet, every other
+      shortcut too.</p>
+      <p><strong>Copied text carries HTML escaping.</strong> Text from a web page arrives with
+      <code>&amp;#39;</code> where an apostrophe should be, and it is easy not to notice until it
+      types out literally.</p>
+      <p>This page indents pasted text correctly, decodes the escaping, and shows the exact file
+      before it is written.</p>
+    </details>
+  </div>
+
 </div>
 
-<div id="panel-snips" class="panel on">
-<div id="list"></div>
-<button id="add">Add a shortcut</button>
-<div class="row" style="margin-top:14px">
-  <button id="save2" class="primary" disabled>Save to GitHub</button>
-  <span id="status2" class="status" style="margin:0"></span>
-</div>
-
-<h2>What will be written</h2>
-<pre id="preview">—</pre>
-</div>
-
-</div>
 <script>
 "use strict";
 
@@ -304,9 +309,8 @@ async function load() {
     }
     S.sha = body.sha;
     S.snips = parsed;
+    markDirty(false);
     draw();
-    $("save").disabled = false;
-    $("save2").disabled = false;
     showTab("snips");
     setStatus(`Loaded ${parsed.length} shortcut${parsed.length === 1 ? "" : "s"}.`, "good");
   } catch (e) {
@@ -329,15 +333,33 @@ async function save() {
     if (!res.ok) return setStatus("GitHub returned " + res.status, "bad");
     const body = await res.json();
     S.sha = body.content.sha;
+    markDirty(false);
     setStatus("Saved. Run git pull on your machines, or Pull on the phone.", "good");
   } catch (e) {
     setStatus("Could not reach GitHub: " + e.message, "bad");
   }
 }
 
+
+
+
 // ---------------------------------------------------------------------------
 // UI
+//
+// The bar is sticky and holds Save, Add and search, because with a couple of
+// dozen shortcuts the useful controls were below the fold and the list was a
+// wall of identical cards. One collapsed line each, filtered as you type.
 // ---------------------------------------------------------------------------
+
+let dirty = false;
+let filter = "";
+
+function markDirty(on) {
+  dirty = on;
+  const save = $("save");
+  save.disabled = !on;
+  save.textContent = on ? "Save •" : "Save";
+}
 
 function readFields() {
   S.repo = $("repo").value.trim();
@@ -348,29 +370,59 @@ function readFields() {
   localStorage.setItem("token", S.token);
 }
 
+function showTab(which) {
+  const creds = which === "creds";
+  $("panel-creds").className = "panel" + (creds ? " on" : "");
+  $("panel-snips").className = "panel" + (creds ? "" : " on");
+  $("tab-creds").className = creds ? "on" : "";
+}
+
+function matches(s) {
+  if (!filter) return true;
+  const q = filter.toLowerCase();
+  return s.trigger.toLowerCase().includes(q) || s.replace.toLowerCase().includes(q);
+}
+
 function draw() {
   const list = $("list");
   list.innerHTML = "";
-  S.snips.forEach((s, i) => {
-    const card = document.createElement("div");
-    card.className = "card";
+  const shown = S.snips.filter(matches);
 
-    const head = document.createElement("div");
-    head.className = "row";
-    const trig = document.createElement("input");
-    trig.className = "mono grow";
-    trig.value = s.trigger;
-    trig.placeholder = ":shortcut";
-    trig.oninput = () => { s.trigger = trig.value.trim(); preview(); };
-    const del = document.createElement("button");
-    del.className = "del";
-    del.textContent = "Remove";
-    del.onclick = () => { S.snips.splice(i, 1); draw(); };
-    head.append(trig, del);
+  shown.forEach(s => {
+    const i = S.snips.indexOf(s);
+    const card = document.createElement("details");
+    card.className = "snip";
 
+    const head = document.createElement("summary");
+    const trig = document.createElement("span");
+    trig.className = "trig";
+    trig.textContent = s.trigger || "(no shortcut)";
+    const peek = document.createElement("span");
+    peek.className = "peek";
+    peek.textContent = s.replace.replace(/\n/g, " ⏎ ");
+    const len = document.createElement("span");
+    len.className = "len";
+    len.textContent = s.replace.length + " chars";
+    head.append(trig, peek, len);
+
+    const body = document.createElement("div");
+    body.className = "body";
+
+    const tLabel = document.createElement("label");
+    tLabel.textContent = "Type this";
+    const tIn = document.createElement("input");
+    tIn.className = "mono";
+    tIn.value = s.trigger;
+    tIn.oninput = () => {
+      s.trigger = tIn.value.trim();
+      trig.textContent = s.trigger || "(no shortcut)";
+      markDirty(true); preview();
+    };
+
+    const rLabel = document.createElement("label");
+    rLabel.textContent = "Get this — press Enter for new lines";
     const area = document.createElement("textarea");
     area.value = s.replace;
-    area.placeholder = "Paste or type the text. Press Enter for new lines.";
     const note = document.createElement("div");
     note.className = "fixes";
 
@@ -378,23 +430,46 @@ function draw() {
       const fixed = clean(raw);
       const fixes = describeFixes(raw, fixed);
       s.replace = fixed;
+      area.value = fixed;
+      peek.textContent = fixed.replace(/\n/g, " ⏎ ");
+      len.textContent = fixed.length + " chars";
       note.textContent = fixes.length ? "Cleaned up: " + fixes.join(", ") + "." : "";
-      preview();
+      markDirty(true); preview();
     };
-    // On paste specifically, so the repair is visible the moment it happens.
     area.onpaste = e => {
       e.preventDefault();
       const text = (e.clipboardData || window.clipboardData).getData("text");
-      const start = area.selectionStart, end = area.selectionEnd;
-      area.value = area.value.slice(0, start) + clean(text) + area.value.slice(end);
+      const a = area.selectionStart, b = area.selectionEnd;
+      area.value = area.value.slice(0, a) + clean(text) + area.value.slice(b);
       apply(area.value);
     };
-    area.oninput = () => { s.replace = area.value; preview(); };
-    area.onblur = () => { area.value = clean(area.value); apply(area.value); };
+    area.oninput = () => {
+      s.replace = area.value;
+      peek.textContent = area.value.replace(/\n/g, " ⏎ ");
+      len.textContent = area.value.length + " chars";
+      markDirty(true); preview();
+    };
+    area.onblur = () => apply(area.value);
 
-    card.append(head, document.createElement("div"), area, note);
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "Delete this shortcut";
+    del.onclick = () => {
+      S.snips.splice(i, 1);
+      markDirty(true); draw();
+    };
+
+    body.append(tLabel, tIn, rLabel, area, note, del);
+    card.append(head, body);
     list.append(card);
   });
+
+  const total = S.snips.length;
+  $("count").textContent = total === 0
+    ? "No shortcuts yet. Load from GitHub, or press Add."
+    : filter
+      ? `${shown.length} of ${total} match “${filter}”`
+      : `${total} shortcut${total === 1 ? "" : "s"}`;
   preview();
 }
 
@@ -402,33 +477,24 @@ function preview() {
   $("preview").textContent = S.snips.length ? renderYaml(S.snips) : "—";
 }
 
-// Two tabs: the shortcuts are the work, the credentials are set once and forgotten.
-function showTab(which) {
-  const snips = which === "snips";
-  $("panel-snips").className = "panel" + (snips ? " on" : "");
-  $("panel-creds").className = "panel" + (snips ? "" : " on");
-  $("tab-snips").className = snips ? "on" : "";
-  $("tab-creds").className = snips ? "" : "on";
-}
-$("tab-snips").onclick = () => showTab("snips");
-$("tab-creds").onclick = () => showTab("creds");
-
-$("load").onclick = load;
-$("save").onclick = save;
-$("save2").onclick = save;
+$("search").oninput = e => { filter = e.target.value.trim(); draw(); };
+$("load").onclick = () => load();
+$("save").onclick = () => save();
+$("tab-creds").onclick = () => showTab($("panel-creds").className.includes("on") ? "snips" : "creds");
+$("done-creds").onclick = () => showTab("snips");
 $("add").onclick = () => {
-  S.snips.push({ trigger: ":", replace: "" });
+  S.snips.unshift({ trigger: ":", replace: "" });   // newest first, where it can be seen
+  filter = ""; $("search").value = "";
+  markDirty(true);
   draw();
-  $("save").disabled = false;
-  $("save2").disabled = false;
+  const first = document.querySelector(".snip");
+  if (first) { first.open = true; first.querySelector("input").focus(); }
 };
 
 $("repo").value = S.repo;
 $("path").value = S.path;
 $("token").value = S.token;
-// Straight to credentials when there is nothing stored; otherwise load immediately, since
-// the point of the page is the shortcuts and not the settings.
-if (S.repo && S.token) { setStatus("Ready — press Load."); load(); }
+if (S.repo && S.token) { setStatus("Loading…"); load(); }
 else { showTab("creds"); setStatus("Add your repository and token, then Load."); }
 </script>
 </body>
