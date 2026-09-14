@@ -485,6 +485,7 @@ $("done-creds").onclick = () => showTab("snips");
 $("add").onclick = () => {
   S.snips.unshift({ trigger: ":", replace: "" });   // newest first, where it can be seen
   filter = ""; $("search").value = "";
+  showTab("snips");          // Add from the settings panel would otherwise look like a no-op
   markDirty(true);
   draw();
   const first = document.querySelector(".snip");
