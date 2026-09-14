@@ -443,8 +443,6 @@ function matches(s) {
 
 function startDrag(e, card) {
   e.preventDefault();
-  const grip = e.currentTarget;
-  grip.setPointerCapture(e.pointerId);
   card.classList.add("dragging");
   card.open = false;                       // an expanded card is taller than the drop targets
 
@@ -460,17 +458,19 @@ function startDrag(e, card) {
     if (ev.clientY > box.top + box.height / 2) target.after(card);
     else target.before(card);
   };
+  // On the window, not the grip. A release that lands anywhere else — off the grip, outside
+  // the page, a cancelled touch — would otherwise never finish the drag, leaving the list
+  // rearranged on screen and unchanged underneath. Seen happening.
   const onUp = () => {
-    grip.releasePointerCapture(e.pointerId);
-    grip.removeEventListener("pointermove", onMove);
-    grip.removeEventListener("pointerup", onUp);
-    grip.removeEventListener("pointercancel", onUp);
+    removeEventListener("pointermove", onMove, true);
+    removeEventListener("pointerup", onUp, true);
+    removeEventListener("pointercancel", onUp, true);
     card.classList.remove("dragging");
     commitOrder();
   };
-  grip.addEventListener("pointermove", onMove);
-  grip.addEventListener("pointerup", onUp);
-  grip.addEventListener("pointercancel", onUp);
+  addEventListener("pointermove", onMove, true);
+  addEventListener("pointerup", onUp, true);
+  addEventListener("pointercancel", onUp, true);
 }
 
 /** Reads the list back out of the DOM: order and group in one pass. */
