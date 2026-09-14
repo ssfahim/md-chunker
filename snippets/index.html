@@ -60,6 +60,19 @@
          padding:5px 9px; border-radius:7px; font:inherit }
   .fixes { font-size:12px; color:var(--accent); margin-top:6px; min-height:16px }
   .empty { color:var(--muted); text-align:center; padding:40px 0 }
+
+  /* Headings are the only thing between one shortcut and the next, so they carry the weight. */
+  .ghead { display:flex; align-items:center; gap:8px; margin:18px 0 7px;
+           font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+           color:var(--accent) }
+  .ghead::after { content:""; flex:1; height:1px; background:var(--line) }
+  .ghead:first-child { margin-top:2px }
+  .ghead button { font:inherit; letter-spacing:0; text-transform:none; border:0;
+                  background:none; color:var(--muted); cursor:pointer; padding:0 2px }
+  .moves { display:flex; flex-direction:column; gap:1px }
+  .moves button { font-size:9px; line-height:1; padding:2px 5px; border:1px solid var(--line);
+                  border-radius:4px; background:var(--bg); color:var(--muted); cursor:pointer }
+  .moves button:disabled { opacity:.25; cursor:default }
   pre { background:var(--code); border:1px solid var(--line); border-radius:8px; padding:12px;
         overflow:auto; margin:0; white-space:pre-wrap; word-break:break-word; font-size:12.5px }
   details.plain { border:1px solid var(--line); border-radius:9px; padding:12px;
@@ -77,6 +90,7 @@
   <div class="bar-row">
     <h1>Snippets</h1>
     <input id="search" type="search" placeholder="Search shortcuts…" autocomplete="off">
+    <button id="sort" title="Sort A–Z inside each group">A–Z</button>
     <button id="add">+ Add</button>
     <button id="save" class="primary" disabled>Save</button>
     <div class="tabs"><button id="tab-creds" title="GitHub settings">⚙</button></div>
@@ -100,6 +114,7 @@
   </div>
 
   <div id="panel-snips" class="panel on">
+    <datalist id="group-names"></datalist>
     <div id="list"></div>
     <div id="count" class="empty"></div>
 
@@ -175,7 +190,12 @@ function describeFixes(before, after) {
 
 function renderYaml(snips) {
   let out = "matches:\n";
+  let heading = "";
   for (const s of snips) {
+    // Espanso has no notion of a group, so the heading rides along as a comment at column 0.
+    // A bare marker closes one, so a later ungrouped snippet is not read back into it.
+    const g = (s.group || "").trim();
+    if (g !== heading) { out += g ? "# group: " + g + "\n" : "# group:\n"; heading = g; }
     out += "  - trigger: " + JSON.stringify(s.trigger) + "\n";
     if (s.replace.includes("\n")) {
       out += "    replace: |\n";
@@ -194,14 +214,18 @@ function renderYaml(snips) {
  */
 function parseYaml(text) {
   const out = [];
-  let trigger = null, replace = null, blockIndent = -1;
+  let trigger = null, replace = null, blockIndent = -1, group = "";
 
   const flush = () => {
     if (trigger && replace !== null) {
-      out.push({ trigger, replace: unescapeHtml(replace.replace(/\n+$/, "")) });
+      out.push({ trigger, replace: unescapeHtml(replace.replace(/\n+$/, "")), group });
     }
     trigger = null; replace = null; blockIndent = -1;
   };
+  // Column 0 and this exact prefix. The block reader below deliberately swallows any other
+  // unindented line into the snippet above it, which is what repairs hand-pasted text — so
+  // only an unmistakable marker may interrupt it.
+  const headingOf = raw => raw.startsWith("# group:") ? raw.slice(8).trim() : null;
   const unquote = v => {
     v = v.trim();
     if (v.length > 1 && v[0] === '"' && v.endsWith('"')) {
@@ -215,7 +239,8 @@ function parseYaml(text) {
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const t = raw.trim();
-    const startsEntry = t.startsWith("- trigger:") || t.startsWith("trigger:");
+    const heading = headingOf(raw);
+    const startsEntry = t.startsWith("- trigger:") || t.startsWith("trigger:") || heading !== null;
 
     if (blockIndent >= 0 && !startsEntry) {
       if (t === "") { replace += "\n"; continue; }
@@ -224,6 +249,10 @@ function parseYaml(text) {
       continue;
     }
     if (blockIndent >= 0 && startsEntry) flush();
+
+    // Flush first: a heading must close the entry above it before it changes the current
+    // group, or that entry ends up filed under the heading that follows it.
+    if (heading !== null) { flush(); group = heading; continue; }
 
     if (t === "" || t.startsWith("#")) continue;
     if (startsEntry) {
@@ -383,15 +412,78 @@ function matches(s) {
   return s.trigger.toLowerCase().includes(q) || s.replace.toLowerCase().includes(q);
 }
 
+/** Group names in the order they appear; ungrouped always last. */
+function groupOrder() {
+  const seen = [];
+  for (const s of S.snips) { const g = s.group || ""; if (!seen.includes(g)) seen.push(g); }
+  return seen.sort((a, b) => (a === "" ? 1 : 0) - (b === "" ? 1 : 0));
+}
+
+/**
+ * Keeps each group's snippets together. The file format needs it — a heading runs until the
+ * next one — and it is also the only order that makes sense to look at. Sort is stable, so
+ * the order the user arranged inside a group survives.
+ */
+function normalize() {
+  const order = groupOrder();
+  S.snips.sort((a, b) => order.indexOf(a.group || "") - order.indexOf(b.group || ""));
+}
+
+/** Swaps a snippet with its neighbour, never across a heading — moving must not regroup. */
+function move(s, dir) {
+  const i = S.snips.indexOf(s), j = i + dir;
+  if (j < 0 || j >= S.snips.length) return;
+  if ((S.snips[j].group || "") !== (s.group || "")) return;
+  [S.snips[i], S.snips[j]] = [S.snips[j], S.snips[i]];
+  markDirty(true); draw();
+}
+
+function canMove(s, dir) {
+  const j = S.snips.indexOf(s) + dir;
+  return j >= 0 && j < S.snips.length && (S.snips[j].group || "") === (s.group || "");
+}
+
+function groupHeader(name) {
+  const head = document.createElement("div");
+  head.className = "ghead";
+  head.append(name || "Ungrouped");
+  if (name) {
+    const rename = document.createElement("button");
+    rename.textContent = "rename";
+    rename.onclick = () => {
+      const next = prompt("Rename this group", name);
+      if (next === null) return;
+      for (const s of S.snips) if ((s.group || "") === name) s.group = next.trim();
+      markDirty(true); draw();
+    };
+    head.append(rename);
+  }
+  return head;
+}
+
 function draw() {
+  normalize();
   const list = $("list");
   list.innerHTML = "";
   const shown = S.snips.filter(matches);
+  let heading = null;
+
+  $("group-names").innerHTML = "";
+  for (const g of groupOrder()) {
+    if (!g) continue;
+    const o = document.createElement("option");
+    o.value = g;
+    $("group-names").append(o);
+  }
 
   shown.forEach(s => {
-    const i = S.snips.indexOf(s);
+    const g = s.group || "";
+    if (g !== heading) { list.append(groupHeader(g)); heading = g; }
+
     const card = document.createElement("details");
     card.className = "snip";
+    card.open = !!s.open;                       // survives the redraw a move causes
+    card.ontoggle = () => { s.open = card.open; };
 
     const head = document.createElement("summary");
     const trig = document.createElement("span");
@@ -403,7 +495,18 @@ function draw() {
     const len = document.createElement("span");
     len.className = "len";
     len.textContent = s.replace.length + " chars";
-    head.append(trig, peek, len);
+
+    const moves = document.createElement("span");
+    moves.className = "moves";
+    for (const [label, dir] of [["▲", -1], ["▼", +1]]) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.disabled = !canMove(s, dir);
+      b.title = dir < 0 ? "Move up" : "Move down";
+      b.onclick = e => { e.preventDefault(); e.stopPropagation(); move(s, dir); };
+      moves.append(b);
+    }
+    head.append(trig, peek, len, moves);
 
     const body = document.createElement("div");
     body.className = "body";
@@ -417,6 +520,17 @@ function draw() {
       s.trigger = tIn.value.trim();
       trig.textContent = s.trigger || "(no shortcut)";
       markDirty(true); preview();
+    };
+
+    const gLabel = document.createElement("label");
+    gLabel.textContent = "Group — type a new name to start one, blank to leave it out";
+    const gIn = document.createElement("input");
+    gIn.setAttribute("list", "group-names");
+    gIn.value = s.group || "";
+    gIn.placeholder = "Ungrouped";
+    gIn.onchange = () => {          // on change, not on input: redrawing mid-word loses focus
+      s.group = gIn.value.trim();
+      markDirty(true); draw();
     };
 
     const rLabel = document.createElement("label");
@@ -455,11 +569,11 @@ function draw() {
     del.className = "del";
     del.textContent = "Delete this shortcut";
     del.onclick = () => {
-      S.snips.splice(i, 1);
+      S.snips.splice(S.snips.indexOf(s), 1);
       markDirty(true); draw();
     };
 
-    body.append(tLabel, tIn, rLabel, area, note, del);
+    body.append(tLabel, tIn, gLabel, gIn, rLabel, area, note, del);
     card.append(head, body);
     list.append(card);
   });
@@ -478,18 +592,29 @@ function preview() {
 }
 
 $("search").oninput = e => { filter = e.target.value.trim(); draw(); };
+$("sort").onclick = () => {
+  // Inside each group only — sorting across them would undo the grouping.
+  const order = groupOrder();
+  S.snips.sort((a, b) =>
+    order.indexOf(a.group || "") - order.indexOf(b.group || "") ||
+    a.trigger.localeCompare(b.trigger));
+  markDirty(true); draw();
+};
 $("load").onclick = () => load();
 $("save").onclick = () => save();
 $("tab-creds").onclick = () => showTab($("panel-creds").className.includes("on") ? "snips" : "creds");
 $("done-creds").onclick = () => showTab("snips");
 $("add").onclick = () => {
-  S.snips.unshift({ trigger: ":", replace: "" });   // newest first, where it can be seen
+  // Ungrouped, so it lands in the last section — and opened, so the redraw scrolls to it
+  // rather than leaving a new shortcut somewhere below the fold.
+  const fresh = { trigger: ":", replace: "", group: "", open: true };
+  S.snips.push(fresh);
   filter = ""; $("search").value = "";
   showTab("snips");          // Add from the settings panel would otherwise look like a no-op
   markDirty(true);
   draw();
-  const first = document.querySelector(".snip");
-  if (first) { first.open = true; first.querySelector("input").focus(); }
+  const card = [...document.querySelectorAll(".snip")].pop();
+  if (card) { card.scrollIntoView({ block: "center" }); card.querySelector("input").focus(); }
 };
 
 $("repo").value = S.repo;
