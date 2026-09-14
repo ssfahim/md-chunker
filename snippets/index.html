@@ -69,10 +69,13 @@
   .ghead:first-child { margin-top:2px }
   .ghead button { font:inherit; letter-spacing:0; text-transform:none; border:0;
                   background:none; color:var(--muted); cursor:pointer; padding:0 2px }
-  .moves { display:flex; flex-direction:column; gap:1px }
-  .moves button { font-size:9px; line-height:1; padding:2px 5px; border:1px solid var(--line);
-                  border-radius:4px; background:var(--bg); color:var(--muted); cursor:pointer }
-  .moves button:disabled { opacity:.25; cursor:default }
+  /* touch-action:none is what lets a drag start on a phone instead of scrolling the page. */
+  .grip { cursor:grab; color:var(--muted); padding:0 2px; font-size:13px; line-height:1;
+          touch-action:none; user-select:none }
+  .grip[hidden] { display:none }
+  .snip.dragging { opacity:.55; border-color:var(--accent); cursor:grabbing }
+  .gdrop { border:1px dashed var(--line); border-radius:9px; padding:14px; margin-bottom:7px;
+           text-align:center; color:var(--muted); font-size:12.5px }
   pre { background:var(--code); border:1px solid var(--line); border-radius:8px; padding:12px;
         overflow:auto; margin:0; white-space:pre-wrap; word-break:break-word; font-size:12.5px }
   details.plain { border:1px solid var(--line); border-radius:9px; padding:12px;
@@ -91,6 +94,7 @@
     <h1>Snippets</h1>
     <input id="search" type="search" placeholder="Search shortcuts…" autocomplete="off">
     <button id="sort" title="Sort A–Z inside each group">A–Z</button>
+    <button id="add-group">+ Group</button>
     <button id="add">+ Add</button>
     <button id="save" class="primary" disabled>Save</button>
     <div class="tabs"><button id="tab-creds" title="GitHub settings">⚙</button></div>
@@ -114,7 +118,6 @@
   </div>
 
   <div id="panel-snips" class="panel on">
-    <datalist id="group-names"></datalist>
     <div id="list"></div>
     <div id="count" class="empty"></div>
 
@@ -188,32 +191,40 @@ function describeFixes(before, after) {
 // The file format — Espanso match files.
 // ---------------------------------------------------------------------------
 
-function renderYaml(snips) {
-  let out = "matches:\n";
-  let heading = "";
-  for (const s of snips) {
-    // Espanso has no notion of a group, so the heading rides along as a comment at column 0.
-    // A bare marker closes one, so a later ungrouped snippet is not read back into it.
-    const g = (s.group || "").trim();
-    if (g !== heading) { out += g ? "# group: " + g + "\n" : "# group:\n"; heading = g; }
-    out += "  - trigger: " + JSON.stringify(s.trigger) + "\n";
+/**
+ * @param groups every group name, in order — including ones with nothing in them yet, which
+ *   is how a group you have just made survives a save while you are still filling it.
+ */
+function renderYaml(snips, groups) {
+  const entry = s => {
+    let out = "  - trigger: " + JSON.stringify(s.trigger) + "\n";
     if (s.replace.includes("\n")) {
       out += "    replace: |\n";
       for (const line of s.replace.split("\n")) out += "      " + line + "\n";
     } else {
       out += "    replace: " + JSON.stringify(s.replace) + "\n";
     }
+    return out;
+  };
+
+  let out = "matches:\n";
+  // Espanso has no notion of a group, so a heading rides along as a comment at column 0 and
+  // runs until the next one. Writing group by group is what keeps that true.
+  for (const g of groups) {
+    out += "# group: " + g + "\n";
+    for (const s of snips) if ((s.group || "") === g) out += entry(s);
+  }
+  const loose = snips.filter(s => !groups.includes(s.group || ""));
+  if (loose.length) {
+    if (groups.length) out += "# group:\n";   // a bare marker closes the last group
+    for (const s of loose) out += entry(s);
   }
   return out;
 }
 
-/**
- * Read a match file, forgiving the unindented-block mistake.
- * A block ends at the next trigger line whatever its indentation, because
- * nothing else can follow one.
- */
 function parseYaml(text) {
   const out = [];
+  out.groups = [];                       // every heading in the file, in order
   let trigger = null, replace = null, blockIndent = -1, group = "";
 
   const flush = () => {
@@ -252,7 +263,12 @@ function parseYaml(text) {
 
     // Flush first: a heading must close the entry above it before it changes the current
     // group, or that entry ends up filed under the heading that follows it.
-    if (heading !== null) { flush(); group = heading; continue; }
+    if (heading !== null) {
+      flush();
+      group = heading;
+      if (group && !out.groups.includes(group)) out.groups.push(group);
+      continue;
+    }
 
     if (t === "" || t.startsWith("#")) continue;
     if (startsEntry) {
@@ -287,6 +303,7 @@ const S = {
   token: localStorage.getItem("token") || "",
   sha: null,
   snips: [],
+  groups: [],      // names in order, including ones nothing is filed under yet
 };
 
 const $ = id => document.getElementById(id);
@@ -338,6 +355,7 @@ async function load() {
     }
     S.sha = body.sha;
     S.snips = parsed;
+    S.groups = parsed.groups || [];
     markDirty(false);
     draw();
     showTab("snips");
@@ -353,7 +371,7 @@ async function save() {
   try {
     const res = await api("PUT", {
       message: "Update snippets from the web editor",
-      content: b64encode(renderYaml(S.snips)),
+      content: b64encode(renderYaml(S.snips, S.groups)),
       sha: S.sha || undefined,
     });
     if (res.status === 409 || res.status === 422) {
@@ -412,194 +430,264 @@ function matches(s) {
   return s.trigger.toLowerCase().includes(q) || s.replace.toLowerCase().includes(q);
 }
 
-/** Group names in the order they appear; ungrouped always last. */
-function groupOrder() {
-  const seen = [];
-  for (const s of S.snips) { const g = s.group || ""; if (!seen.includes(g)) seen.push(g); }
-  return seen.sort((a, b) => (a === "" ? 1 : 0) - (b === "" ? 1 : 0));
+// ---------------------------------------------------------------------------
+// Dragging
+//
+// Pointer events rather than HTML5 drag-and-drop, because the same handful of lines then
+// works with a finger as well as a mouse — the drag API does nothing at all on touch.
+//
+// While a drag is in progress only the DOM moves; the model is rebuilt from the finished
+// order on drop. That way one walk of the list decides both the new order *and* which group
+// each shortcut landed in, with no index bookkeeping to get wrong mid-drag.
+// ---------------------------------------------------------------------------
+
+function startDrag(e, card) {
+  e.preventDefault();
+  const grip = e.currentTarget;
+  grip.setPointerCapture(e.pointerId);
+  card.classList.add("dragging");
+  card.open = false;                       // an expanded card is taller than the drop targets
+
+  const onMove = ev => {
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    const target = under && under.closest(".snip, .ghead, .gdrop");
+    if (!target || target === card) return;
+    if (target.classList.contains("ghead")) {
+      target.after(card);                  // dropped on a heading: top of that section
+      return;
+    }
+    const box = target.getBoundingClientRect();
+    if (ev.clientY > box.top + box.height / 2) target.after(card);
+    else target.before(card);
+  };
+  const onUp = () => {
+    grip.releasePointerCapture(e.pointerId);
+    grip.removeEventListener("pointermove", onMove);
+    grip.removeEventListener("pointerup", onUp);
+    grip.removeEventListener("pointercancel", onUp);
+    card.classList.remove("dragging");
+    commitOrder();
+  };
+  grip.addEventListener("pointermove", onMove);
+  grip.addEventListener("pointerup", onUp);
+  grip.addEventListener("pointercancel", onUp);
 }
 
-/**
- * Keeps each group's snippets together. The file format needs it — a heading runs until the
- * next one — and it is also the only order that makes sense to look at. Sort is stable, so
- * the order the user arranged inside a group survives.
- */
-function normalize() {
-  const order = groupOrder();
-  S.snips.sort((a, b) => order.indexOf(a.group || "") - order.indexOf(b.group || ""));
+/** Reads the list back out of the DOM: order and group in one pass. */
+function commitOrder() {
+  const next = [];
+  let group = "";
+  for (const node of $("list").children) {
+    if (node.classList.contains("ghead")) group = node.dataset.group || "";
+    else if (node.snip) { node.snip.group = group; next.push(node.snip); }
+  }
+  S.snips = next;
+  markDirty(true);
+  draw();
 }
 
-/** Swaps a snippet with its neighbour, never across a heading — moving must not regroup. */
-function move(s, dir) {
-  const i = S.snips.indexOf(s), j = i + dir;
-  if (j < 0 || j >= S.snips.length) return;
-  if ((S.snips[j].group || "") !== (s.group || "")) return;
-  [S.snips[i], S.snips[j]] = [S.snips[j], S.snips[i]];
+// ---------------------------------------------------------------------------
+// Groups
+// ---------------------------------------------------------------------------
+
+function addGroup() {
+  const name = (prompt("Name the group") || "").trim();
+  if (!name) return;
+  if (!S.groups.includes(name)) S.groups.push(name);
+  markDirty(true);
+  draw();
+  // A group is made in order to fill it, so put it where it can be filled.
+  [...document.querySelectorAll(".ghead")].pop().scrollIntoView({ block: "center" });
+}
+
+function renameGroup(name) {
+  const next = (prompt("Rename this group", name) || "").trim();
+  if (!next || next === name) return;
+  S.groups = S.groups.map(g => (g === name ? next : g));
+  for (const s of S.snips) if ((s.group || "") === name) s.group = next;
   markDirty(true); draw();
 }
 
-function canMove(s, dir) {
-  const j = S.snips.indexOf(s) + dir;
-  return j >= 0 && j < S.snips.length && (S.snips[j].group || "") === (s.group || "");
+function removeGroup(name) {
+  S.groups = S.groups.filter(g => g !== name);
+  for (const s of S.snips) if ((s.group || "") === name) s.group = "";
+  markDirty(true); draw();
 }
 
 function groupHeader(name) {
   const head = document.createElement("div");
   head.className = "ghead";
+  head.dataset.group = name;
   head.append(name || "Ungrouped");
   if (name) {
-    const rename = document.createElement("button");
-    rename.textContent = "rename";
-    rename.onclick = () => {
-      const next = prompt("Rename this group", name);
-      if (next === null) return;
-      for (const s of S.snips) if ((s.group || "") === name) s.group = next.trim();
-      markDirty(true); draw();
-    };
-    head.append(rename);
+    for (const [label, fn] of [["rename", renameGroup], ["remove", removeGroup]]) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.onclick = () => fn(name);
+      head.append(b);
+    }
   }
   return head;
 }
 
-function draw() {
-  normalize();
-  const list = $("list");
-  list.innerHTML = "";
-  const shown = S.snips.filter(matches);
-  let heading = null;
+function dropZone(name) {
+  const z = document.createElement("div");
+  z.className = "gdrop";
+  z.textContent = name ? "Drag shortcuts here" : "Nothing outside a group";
+  return z;
+}
 
-  $("group-names").innerHTML = "";
-  for (const g of groupOrder()) {
-    if (!g) continue;
+// ---------------------------------------------------------------------------
+// The list
+// ---------------------------------------------------------------------------
+
+function snippetCard(s) {
+  const card = document.createElement("details");
+  card.className = "snip";
+  card.snip = s;
+  card.open = !!s.open;
+  card.ontoggle = () => { s.open = card.open; };
+
+  const head = document.createElement("summary");
+
+  const grip = document.createElement("span");
+  grip.className = "grip";
+  grip.textContent = "⠿";
+  grip.title = "Drag to move";
+  // Reordering while a search is on would be reading an order that is not all there.
+  grip.hidden = !!filter;
+  grip.onpointerdown = e => startDrag(e, card);
+  grip.onclick = e => { e.preventDefault(); e.stopPropagation(); };
+
+  const trig = document.createElement("span");
+  trig.className = "trig";
+  trig.textContent = s.trigger || "(no shortcut)";
+  const peek = document.createElement("span");
+  peek.className = "peek";
+  peek.textContent = s.replace.replace(/\n/g, " ⏎ ");
+  const len = document.createElement("span");
+  len.className = "len";
+  len.textContent = s.replace.length + " chars";
+  head.append(grip, trig, peek, len);
+
+  const body = document.createElement("div");
+  body.className = "body";
+
+  const tLabel = document.createElement("label");
+  tLabel.textContent = "Type this";
+  const tIn = document.createElement("input");
+  tIn.className = "mono";
+  tIn.value = s.trigger;
+  tIn.oninput = () => {
+    s.trigger = tIn.value.trim();
+    trig.textContent = s.trigger || "(no shortcut)";
+    markDirty(true); preview();
+  };
+
+  const gLabel = document.createElement("label");
+  gLabel.textContent = "Group";
+  const gIn = document.createElement("select");
+  for (const g of [...S.groups, ""]) {
     const o = document.createElement("option");
     o.value = g;
-    $("group-names").append(o);
+    o.textContent = g || "Ungrouped";
+    o.selected = g === (s.group || "");
+    gIn.append(o);
   }
+  gIn.onchange = () => { s.group = gIn.value; markDirty(true); draw(); };
 
-  shown.forEach(s => {
-    const g = s.group || "";
-    if (g !== heading) { list.append(groupHeader(g)); heading = g; }
+  const rLabel = document.createElement("label");
+  rLabel.textContent = "Get this — press Enter for new lines";
+  const area = document.createElement("textarea");
+  area.value = s.replace;
+  const note = document.createElement("div");
+  note.className = "fixes";
 
-    const card = document.createElement("details");
-    card.className = "snip";
-    card.open = !!s.open;                       // survives the redraw a move causes
-    card.ontoggle = () => { s.open = card.open; };
+  const apply = raw => {
+    const fixed = clean(raw);
+    const fixes = describeFixes(raw, fixed);
+    s.replace = fixed;
+    area.value = fixed;
+    peek.textContent = fixed.replace(/\n/g, " ⏎ ");
+    len.textContent = fixed.length + " chars";
+    note.textContent = fixes.length ? "Cleaned up: " + fixes.join(", ") + "." : "";
+    markDirty(true); preview();
+  };
+  area.onpaste = e => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData("text");
+    const a = area.selectionStart, b = area.selectionEnd;
+    area.value = area.value.slice(0, a) + clean(text) + area.value.slice(b);
+    apply(area.value);
+  };
+  area.oninput = () => {
+    s.replace = area.value;
+    peek.textContent = area.value.replace(/\n/g, " ⏎ ");
+    len.textContent = area.value.length + " chars";
+    markDirty(true); preview();
+  };
+  area.onblur = () => apply(area.value);
 
-    const head = document.createElement("summary");
-    const trig = document.createElement("span");
-    trig.className = "trig";
-    trig.textContent = s.trigger || "(no shortcut)";
-    const peek = document.createElement("span");
-    peek.className = "peek";
-    peek.textContent = s.replace.replace(/\n/g, " ⏎ ");
-    const len = document.createElement("span");
-    len.className = "len";
-    len.textContent = s.replace.length + " chars";
+  const del = document.createElement("button");
+  del.className = "del";
+  del.textContent = "Delete this shortcut";
+  del.onclick = () => {
+    S.snips.splice(S.snips.indexOf(s), 1);
+    markDirty(true); draw();
+  };
 
-    const moves = document.createElement("span");
-    moves.className = "moves";
-    for (const [label, dir] of [["▲", -1], ["▼", +1]]) {
-      const b = document.createElement("button");
-      b.textContent = label;
-      b.disabled = !canMove(s, dir);
-      b.title = dir < 0 ? "Move up" : "Move down";
-      b.onclick = e => { e.preventDefault(); e.stopPropagation(); move(s, dir); };
-      moves.append(b);
+  body.append(tLabel, tIn, gLabel, gIn, rLabel, area, note, del);
+  card.append(head, body);
+  return card;
+}
+
+function draw() {
+  const list = $("list");
+  list.innerHTML = "";
+
+  // Anything in a group nobody declared belongs to nobody — it shows up under Ungrouped
+  // rather than vanishing.
+  const inGroup = g => S.snips.filter(s => S.groups.includes(s.group || "") ? s.group === g
+                                                                            : g === "");
+  let shown = 0;
+
+  if (S.groups.length === 0) {
+    // No groups yet: a plain list, with none of the section furniture.
+    for (const s of S.snips.filter(matches)) { list.append(snippetCard(s)); shown++; }
+  } else {
+    for (const g of [...S.groups, ""]) {
+      list.append(groupHeader(g));
+      const items = inGroup(g).filter(matches);
+      if (!items.length) list.append(dropZone(g));
+      for (const s of items) { list.append(snippetCard(s)); shown++; }
     }
-    head.append(trig, peek, len, moves);
-
-    const body = document.createElement("div");
-    body.className = "body";
-
-    const tLabel = document.createElement("label");
-    tLabel.textContent = "Type this";
-    const tIn = document.createElement("input");
-    tIn.className = "mono";
-    tIn.value = s.trigger;
-    tIn.oninput = () => {
-      s.trigger = tIn.value.trim();
-      trig.textContent = s.trigger || "(no shortcut)";
-      markDirty(true); preview();
-    };
-
-    const gLabel = document.createElement("label");
-    gLabel.textContent = "Group — type a new name to start one, blank to leave it out";
-    const gIn = document.createElement("input");
-    gIn.setAttribute("list", "group-names");
-    gIn.value = s.group || "";
-    gIn.placeholder = "Ungrouped";
-    gIn.onchange = () => {          // on change, not on input: redrawing mid-word loses focus
-      s.group = gIn.value.trim();
-      markDirty(true); draw();
-    };
-
-    const rLabel = document.createElement("label");
-    rLabel.textContent = "Get this — press Enter for new lines";
-    const area = document.createElement("textarea");
-    area.value = s.replace;
-    const note = document.createElement("div");
-    note.className = "fixes";
-
-    const apply = raw => {
-      const fixed = clean(raw);
-      const fixes = describeFixes(raw, fixed);
-      s.replace = fixed;
-      area.value = fixed;
-      peek.textContent = fixed.replace(/\n/g, " ⏎ ");
-      len.textContent = fixed.length + " chars";
-      note.textContent = fixes.length ? "Cleaned up: " + fixes.join(", ") + "." : "";
-      markDirty(true); preview();
-    };
-    area.onpaste = e => {
-      e.preventDefault();
-      const text = (e.clipboardData || window.clipboardData).getData("text");
-      const a = area.selectionStart, b = area.selectionEnd;
-      area.value = area.value.slice(0, a) + clean(text) + area.value.slice(b);
-      apply(area.value);
-    };
-    area.oninput = () => {
-      s.replace = area.value;
-      peek.textContent = area.value.replace(/\n/g, " ⏎ ");
-      len.textContent = area.value.length + " chars";
-      markDirty(true); preview();
-    };
-    area.onblur = () => apply(area.value);
-
-    const del = document.createElement("button");
-    del.className = "del";
-    del.textContent = "Delete this shortcut";
-    del.onclick = () => {
-      S.snips.splice(S.snips.indexOf(s), 1);
-      markDirty(true); draw();
-    };
-
-    body.append(tLabel, tIn, gLabel, gIn, rLabel, area, note, del);
-    card.append(head, body);
-    list.append(card);
-  });
+  }
 
   const total = S.snips.length;
   $("count").textContent = total === 0
     ? "No shortcuts yet. Load from GitHub, or press Add."
     : filter
-      ? `${shown.length} of ${total} match “${filter}”`
+      ? `${shown} of ${total} match “${filter}” — clear the search to rearrange`
       : `${total} shortcut${total === 1 ? "" : "s"}`;
   preview();
 }
 
 function preview() {
-  $("preview").textContent = S.snips.length ? renderYaml(S.snips) : "—";
+  $("preview").textContent = S.snips.length || S.groups.length
+    ? renderYaml(S.snips, S.groups) : "—";
 }
 
 $("search").oninput = e => { filter = e.target.value.trim(); draw(); };
 $("sort").onclick = () => {
   // Inside each group only — sorting across them would undo the grouping.
-  const order = groupOrder();
-  S.snips.sort((a, b) =>
-    order.indexOf(a.group || "") - order.indexOf(b.group || "") ||
-    a.trigger.localeCompare(b.trigger));
+  const rank = s => {
+    const i = S.groups.indexOf(s.group || "");
+    return i < 0 ? S.groups.length : i;
+  };
+  S.snips.sort((a, b) => rank(a) - rank(b) || a.trigger.localeCompare(b.trigger));
   markDirty(true); draw();
 };
+$("add-group").onclick = addGroup;
 $("load").onclick = () => load();
 $("save").onclick = () => save();
 $("tab-creds").onclick = () => showTab($("panel-creds").className.includes("on") ? "snips" : "creds");
